@@ -51,6 +51,7 @@ def client(tmp_path, monkeypatch):
         "HERMES_URL": "http://hermes.test:8642/v1",
         "HERMES_API_KEY": "hermes-key",
         "LAUNCHPAD_MCP_TOKEN": "mcp-token",
+        "LAUNCHPAD_ALLOWED_HOSTS": "testserver",
     }.items():
         monkeypatch.setenv(name, value)
     settings.cache_clear()

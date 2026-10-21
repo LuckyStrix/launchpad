@@ -4,6 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Launchpad", lifespan=lifespan)
     app.add_middleware(mcp_server.McpAuth, token=s.mcp_token)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=s.allowed_hosts)
     for router in (layout.router, tiles.router, approvals.router, assistant.router):
         app.include_router(router)
     for router in {id(i.router): i.router for i in registry.values() if i.router}.values():

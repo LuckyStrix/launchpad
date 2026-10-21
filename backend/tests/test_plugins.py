@@ -1,7 +1,16 @@
 from app import integrations
 
 PLUGIN = '''
+from __future__ import annotations
+
+from dataclasses import dataclass
+
 from app.integrations.base import Integration, TileData
+
+
+@dataclass
+class Greeting:  # needs the module in sys.modules to build
+    text: str
 
 
 class Hello(Integration):

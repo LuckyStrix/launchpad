@@ -2,8 +2,10 @@ import asyncio
 import json
 
 import httpx
+from fastapi.testclient import TestClient
 
 from app import approvals
+from app.config import settings
 
 
 def _events(text: str) -> list[tuple[str, dict]]:
@@ -78,6 +80,20 @@ def _result(response) -> dict:
 def test_mcp_requires_token(client):
     assert _rpc(client, "tools/list", token=None).status_code == 401
     assert _rpc(client, "tools/list", token="wrong").status_code == 401
+
+
+def test_mcp_is_off_without_a_token(client, monkeypatch):
+    from app.main import create_app
+
+    monkeypatch.setenv("LAUNCHPAD_MCP_TOKEN", "")
+    settings.cache_clear()
+    with TestClient(create_app()) as c:
+        assert _rpc(c, "tools/list", token=None).status_code == 503
+
+
+def test_unknown_host_is_rejected(client):
+    assert client.get("/api/health", headers={"host": "evil.example"}).status_code == 400
+    assert client.get("/api/health", headers={"host": "launchpad.tail1234.ts.net"}).status_code == 200
 
 
 def test_mcp_lists_and_calls_tools(client, mock_http):

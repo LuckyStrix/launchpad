@@ -21,6 +21,7 @@ class Settings:
     hermes_model: str
     mcp_token: str
     approval_timeout: int
+    allowed_hosts: list[str]
 
 
 @lru_cache
@@ -36,4 +37,7 @@ def settings() -> Settings:
         hermes_model=env("HERMES_MODEL", "hermes-agent"),
         mcp_token=env("LAUNCHPAD_MCP_TOKEN"),
         approval_timeout=int(env("APPROVAL_TIMEOUT", "300")),
+        # Host headers we answer to; anything else (e.g. a DNS-rebinding page) gets a 400.
+        allowed_hosts=["localhost", "127.0.0.1", "launchpad", "*.ts.net"]
+        + [h.strip() for h in env("LAUNCHPAD_ALLOWED_HOSTS").split(",") if h.strip()],
     )

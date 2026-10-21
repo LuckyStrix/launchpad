@@ -9,6 +9,7 @@ import importlib
 import importlib.util
 import logging
 import pkgutil
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -39,9 +40,11 @@ def _plugin_modules(plugin_dir: Path) -> list[ModuleType]:
         try:
             spec = importlib.util.spec_from_file_location(f"launchpad_plugin_{path.stem}", path)
             module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module  # dataclasses and pydantic look the module up here
             spec.loader.exec_module(module)
             modules.append(module)
         except Exception:
+            sys.modules.pop(f"launchpad_plugin_{path.stem}", None)
             log.exception("Skipping plugin %s: it failed to import", path.name)
     return modules
 
