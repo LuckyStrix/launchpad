@@ -31,7 +31,7 @@ def settings() -> Settings:
         config_dir=Path(env("LAUNCHPAD_CONFIG_DIR") or root / "config"),
         static_dir=Path(env("LAUNCHPAD_STATIC_DIR") or root / "frontend" / "dist"),
         public_url=env("PUBLIC_URL").rstrip("/"),
-        hermes_url=env("HERMES_URL", "http://host.docker.internal:8642/v1").rstrip("/"),
+        hermes_url=env("HERMES_URL", "http://hermes:8642/v1").rstrip("/"),
         hermes_api_key=env("HERMES_API_KEY"),
         hermes_model=env("HERMES_MODEL", "hermes-agent"),
         mcp_token=env("LAUNCHPAD_MCP_TOKEN"),

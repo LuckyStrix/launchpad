@@ -40,14 +40,7 @@ Launchpad --SSE--> Hermes container (/v1, bearer key)
 
 ### Plugin model
 
-Each integration lives in `backend/integrations/<name>/`:
-
-- `manifest.yaml`: id, tile types, a config schema (drives the tile editor form), required secrets
-- `tile.py`: `async def fetch(config) -> TileData` (status, list, or value)
-- `actions.py` (optional): buttons on a tile, such as "run workflow" or "toggle light"
-- `tools.py` (optional): tools exposed to Hermes through Launchpad's MCP server; each has a JSON schema and a `requires_approval` flag
-
-The loader discovers folders at startup.
+*As built:* each integration is one `Integration` subclass in `backend/app/integrations/<name>.py`, or in `config/plugins/<name>.py` for personal ones. It declares `fields` (which drive the editor form) and `requires` (its env vars), and implements `fetch(config) -> TileData`. Tile buttons are `@action` methods, Hermes tools are `@tool(write=...)` methods, and pickers come from `options()`. See `docs/adding-an-integration.md`. This replaced the manifest-plus-several-files design below, which was more ceremony than one class.
 
 ### Tile types
 
@@ -125,6 +118,8 @@ launchpad/
 ```
 
 ## Milestones
+
+*Status (2026-10-21):* the code for milestones 1–8 is in place and tested locally. That covers the app, Docker image, compose with the Tailscale sidecar, tile editor, Home Assistant, GitHub, Google, Hermes chat proxy, MCP server with approvals, PWA manifest, backup target, CI and docs. These haven't been tried against the real services yet: the Tailscale sidecar, Hermes, Home Assistant, GitHub and Google.
 
 1. **Skeleton + Docker + Tailscale.** FastAPI, UI shell, seeded link tiles, Dockerfile, compose with Tailscale sidecar, working `https://home.<tailnet>.ts.net`.
 2. **Plugin loader + SQLite layout + tile editor.** Drag and drop, add/edit form from manifest schemas, health dots, YAML export/import.

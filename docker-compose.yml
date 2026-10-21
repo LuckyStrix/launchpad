@@ -1,0 +1,48 @@
+# Launchpad + a Tailscale sidecar. The app shares the sidecar's network, so it is only
+# reachable on your tailnet (https://<TS_HOSTNAME>.<tailnet>.ts.net) and on the
+# launchpad-hermes Docker network, where Hermes reaches it for MCP tools.
+# Run `make up` (it creates the shared network on first run).
+
+services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    hostname: ${TS_HOSTNAME:-launchpad}
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?Set TS_AUTHKEY in .env}
+      TS_HOSTNAME: ${TS_HOSTNAME:-launchpad}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_USERSPACE: "false" # kernel networking, so the app can reach other tailnet devices
+      TS_ACCEPT_DNS: "true" # MagicDNS names like homeassistant work inside the app
+      TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:-}
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./tailscale:/config:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add: [NET_ADMIN, NET_RAW]
+    networks:
+      default:
+      hermes:
+        aliases: [launchpad]
+    restart: unless-stopped
+
+  launchpad:
+    build: .
+    image: launchpad:local
+    network_mode: service:tailscale
+    env_file: .env
+    volumes:
+      - launchpad-data:/data
+      - ./config:/config:ro
+    depends_on: [tailscale]
+    restart: unless-stopped
+
+networks:
+  hermes:
+    name: launchpad-hermes
+    external: true
+
+volumes:
+  tailscale-state:
+  launchpad-data:

@@ -1,8 +1,8 @@
 """Integration registry.
 
-Every module in this package, plus every `*.py` file in `config/plugins/`, is imported at
-startup. A module contributes integrations by defining `integration = MyIntegration()` or
-`integrations = [...]`.
+Every module in this package, plus every `*.py` file in `config/plugins/` (except
+`*.example.py`), is imported at startup. A module contributes integrations by defining
+`integration = MyIntegration()` or `integrations = [...]`.
 """
 
 import importlib
@@ -34,7 +34,8 @@ def _builtin_modules() -> list[ModuleType]:
 
 def _plugin_modules(plugin_dir: Path) -> list[ModuleType]:
     modules = []
-    for path in sorted(plugin_dir.glob("*.py")) if plugin_dir.is_dir() else []:
+    paths = sorted(plugin_dir.glob("*.py")) if plugin_dir.is_dir() else []
+    for path in (p for p in paths if not p.name.endswith(".example.py")):
         try:
             spec = importlib.util.spec_from_file_location(f"launchpad_plugin_{path.stem}", path)
             module = importlib.util.module_from_spec(spec)

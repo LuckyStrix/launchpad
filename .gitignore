@@ -1,9 +1,13 @@
 .env
 config/*
 !config/*.example.yaml
+!config/plugins/
+config/plugins/*
+!config/plugins/*.example.py
 data/
 node_modules/
 __pycache__/
 *.pyc
 .venv/
 frontend/dist/
+backups/
