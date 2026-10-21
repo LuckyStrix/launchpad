@@ -13,7 +13,7 @@ services:
       TS_STATE_DIR: /var/lib/tailscale
       TS_SERVE_CONFIG: /config/serve.json
       TS_USERSPACE: "false" # kernel networking, so the app can reach other tailnet devices
-      TS_ACCEPT_DNS: "true" # MagicDNS names like homeassistant work inside the app
+      TS_ACCEPT_DNS: "false" # keep Docker's DNS so the app can resolve the hermes container
       TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:-}
     volumes:
       - tailscale-state:/var/lib/tailscale

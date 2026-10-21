@@ -2,6 +2,10 @@
 .venv
 .env
 data
+backups
+config
+docs
+tailscale
 **/node_modules
 **/__pycache__
 frontend/dist

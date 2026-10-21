@@ -13,7 +13,8 @@ frontend/node_modules:
 # Local development: API on :8080, Vite with hot reload on :5173.
 dev: $(VENV) frontend/node_modules
 	@trap 'kill 0' EXIT; \
-	(cd backend && ../$(VENV)/bin/uvicorn app.main:create_app --factory --reload --port 8080) & \
+	(cd backend && ../$(VENV)/bin/uvicorn app.main:create_app --factory --reload --port 8080 \
+		$(if $(wildcard .env),--env-file ../.env)) & \
 	(cd frontend && npm run dev) & \
 	wait
 
@@ -40,5 +41,8 @@ logs:
 # Copy the database (layout, chat history, Google token) out of the volume.
 backup:
 	@mkdir -p backups
-	docker compose cp launchpad:/data/launchpad.db backups/launchpad-$$(date +%Y%m%d-%H%M%S).db
+	@# SQLite's backup API includes changes still in the WAL file; a plain file copy wouldn't.
+	docker compose exec -T launchpad python -c "import sqlite3; \
+		sqlite3.connect('/data/launchpad.db').backup(sqlite3.connect('/tmp/launchpad-backup.db'))"
+	docker compose cp launchpad:/tmp/launchpad-backup.db backups/launchpad-$$(date +%Y%m%d-%H%M%S).db
 	@ls -1t backups | head -1
