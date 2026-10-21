@@ -114,8 +114,10 @@ async def chat(body: ChatRequest):
             yield _sse("error", {"message": _error_message(e)})
         finally:
             if reply:
-                db.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, 'assistant', ?)",
-                           (session_id, "".join(reply)))
+                # The session may have been deleted while Hermes was replying; then there's nothing to save.
+                db.execute("INSERT INTO chat_messages (session_id, role, content) SELECT ?, 'assistant', ? "
+                           "WHERE EXISTS (SELECT 1 FROM chat_sessions WHERE id = ?)",
+                           (session_id, "".join(reply), session_id))
             db.execute("UPDATE chat_sessions SET updated_at = datetime('now') WHERE id = ?", (session_id,))
         yield _sse("done", {})
 

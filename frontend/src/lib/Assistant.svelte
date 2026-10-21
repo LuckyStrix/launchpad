@@ -55,7 +55,8 @@
     stopStream();
     sessionId = id;
     error = '';
-    messages = await api.session(id).catch((e) => ((error = e.message), []));
+    const loaded = await api.session(id).catch((e) => ((error = e.message), []));
+    if (sessionId === id) messages = loaded; // ignore a slower load for a conversation we've left
   }
 
   function newChat() {
@@ -104,9 +105,10 @@
 
   async function removeSession() {
     if (!sessionId) return;
-    await api.deleteSession(sessionId).catch(() => {});
-    sessions = sessions.filter((s) => s.id !== sessionId);
-    newChat();
+    const id = sessionId;
+    newChat(); // stop any reply first, so it isn't saved into the deleted conversation
+    await api.deleteSession(id).catch(() => {});
+    sessions = sessions.filter((s) => s.id !== id);
   }
 
   const describe = (args) => Object.entries(args).filter(([, v]) => v !== '' && v != null);

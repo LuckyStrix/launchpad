@@ -75,8 +75,8 @@ class McpAuth:
         if scope["type"] == "http" and scope["path"].startswith("/mcp"):
             if not self.token:
                 return await self._reject(send, 503, b"MCP is off. Set LAUNCHPAD_MCP_TOKEN to turn it on.")
-            given = dict(scope["headers"]).get(b"authorization", b"").decode()
-            if not hmac.compare_digest(given, f"Bearer {self.token}"):
+            given = dict(scope["headers"]).get(b"authorization", b"")
+            if not hmac.compare_digest(given, f"Bearer {self.token}".encode()):
                 return await self._reject(send, 401, b"Missing or wrong MCP token.")
         await self.app(scope, receive, send)
 

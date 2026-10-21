@@ -11,7 +11,7 @@ from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from .. import db
@@ -109,7 +109,10 @@ router = APIRouter(prefix="/api/google", tags=["google"])
 
 
 @router.get("/connect")
-async def connect():
+async def connect(request: Request):
+    # A GET, so the same-origin guard doesn't cover it: refuse other sites resetting a sign-in in progress.
+    if request.headers.get("sec-fetch-site", "none") not in ("same-origin", "none"):
+        raise HTTPException(403, "Start Google sign-in from Launchpad itself.")
     if not settings().public_url or not all(_client().values()):
         raise HTTPException(400, "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and PUBLIC_URL in .env first.")
     state = secrets.token_urlsafe(24)
@@ -124,7 +127,7 @@ async def callback(code: str = "", state: str = "", error: str = ""):
     if error or not code:
         return _sign_in_failed(error or "no code")
     if not state or state != db.kv_get(STATE_KEY):
-        raise HTTPException(400, "This sign-in link has expired. Start again from the Google tile.")
+        return _sign_in_failed("this sign-in link has expired")
     db.kv_delete(STATE_KEY)
     try:
         grant = await _token_request({"grant_type": "authorization_code", "code": code,
@@ -132,8 +135,8 @@ async def callback(code: str = "", state: str = "", error: str = ""):
     except IntegrationError as e:
         return _sign_in_failed(str(e))
     if "refresh_token" not in grant:
-        raise HTTPException(400, "Google didn't return a refresh token. Remove Launchpad's access in your Google "
-                                 "account settings, then connect again.")
+        return _sign_in_failed("Google didn't return a refresh token. Remove Launchpad's access in your "
+                               "Google account settings, then connect again")
     db.kv_set(TOKEN_KEY, grant["refresh_token"])
     _access.update(token=grant["access_token"], expires=time.time() + grant.get("expires_in", 3600))
     return RedirectResponse("/?google=connected")
@@ -187,7 +190,7 @@ class GoogleCalendar(Integration):
 
     async def _events(self, calendar: str, days: int) -> list[dict]:
         now = datetime.now(_tz())
-        end = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=days)
+        end = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=max(days, 1))
         data = await gapi("GET", f"{CALENDAR_API}/calendars/{_seg(calendar)}/events", params={
             "timeMin": now.isoformat(), "timeMax": end.isoformat(), "singleEvents": "true",
             "orderBy": "startTime", "maxResults": 25})
@@ -224,10 +227,17 @@ class GoogleCalendar(Integration):
     async def create_event(self, summary: str, start: str, end: str, description: str = "",
                            calendar: str = "primary") -> dict:
         """Create a calendar event. start and end are ISO 8601 date-times with offsets
-        (e.g. 2026-10-22T15:00:00-04:00), or YYYY-MM-DD dates for an all-day event."""
+        (e.g. 2026-10-22T15:00:00-04:00), or YYYY-MM-DD dates for an all-day event, where
+        end is the last day of the event (2026-10-22 to 2026-10-24 is three days)."""
         key = "date" if len(start) == 10 else "dateTime"
-        if key == "date" and end <= start:  # Google's all-day end date is exclusive
-            end = (date.fromisoformat(start) + timedelta(days=1)).isoformat()
+        if key == "date":
+            try:
+                first, last = date.fromisoformat(start), date.fromisoformat(end)
+            except ValueError:
+                raise IntegrationError("For an all-day event, give start and end as YYYY-MM-DD dates.")
+            if last < first:
+                raise IntegrationError("The event ends before it starts.")
+            end = (last + timedelta(days=1)).isoformat()  # Google's all-day end date is exclusive
         event = await gapi("POST", f"{CALENDAR_API}/calendars/{_seg(calendar)}/events", json={
             "summary": summary, "description": description, "start": {key: start}, "end": {key: end}})
         return {"id": event["id"], "url": event.get("htmlLink")}

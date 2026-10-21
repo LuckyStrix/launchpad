@@ -134,3 +134,8 @@ def test_unknown_api_paths_are_404_not_the_page(client):
     with TestClient(create_app()) as c:
         assert c.get("/some/page").status_code == 200
         assert c.get("/api/nope").status_code == 404
+
+
+def test_non_ascii_mcp_token_is_401_not_500(client):
+    headers = {**MCP_HEADERS, "authorization": "Bearer \xff".encode("latin-1")}
+    assert client.post("/mcp", headers=headers, json={}).status_code == 401

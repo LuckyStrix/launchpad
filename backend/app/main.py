@@ -4,10 +4,12 @@ import logging
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import Headers
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import approvals, assistant, db, integrations, layout, mcp_server, tiles
 from .config import settings
@@ -29,7 +31,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Launchpad", lifespan=lifespan)
     app.add_middleware(mcp_server.McpAuth, token=s.mcp_token)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=s.allowed_hosts)
-    app.middleware("http")(_same_origin_only)
+    app.add_middleware(SameOriginOnly)
     for router in (layout.router, tiles.router, approvals.router, assistant.router):
         app.include_router(router)
     for router in {id(i.router): i.router for i in registry.values() if i.router}.values():
@@ -47,19 +49,26 @@ def create_app() -> FastAPI:
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
-async def _same_origin_only(request: Request, call_next):
+class SameOriginOnly:
     """Refuse state-changing /api requests sent by other websites (CSRF). There is no login,
-    so without this any page the user visits could edit the board or press tile buttons."""
-    if request.method not in SAFE_METHODS and request.url.path.startswith("/api/"):
-        site = request.headers.get("sec-fetch-site")
-        origin = request.headers.get("origin")
-        if site is not None:
-            cross = site not in ("same-origin", "none")
-        else:  # older browsers: compare Origin with Host
-            cross = origin is not None and urlsplit(origin).netloc != request.headers.get("host")
-        if cross:
-            return PlainTextResponse("Requests from other websites are refused.", status_code=403)
-    return await call_next(request)
+    so without this any page the user visits could edit the board or press tile buttons.
+    Plain ASGI rather than BaseHTTPMiddleware, so streamed chat replies pass straight through."""
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["method"] not in SAFE_METHODS and scope["path"].startswith("/api/"):
+            headers = Headers(scope=scope)
+            site, origin = headers.get("sec-fetch-site"), headers.get("origin")
+            if site is not None:
+                cross = site not in ("same-origin", "none")
+            else:  # older browsers: compare Origin with Host
+                cross = origin is not None and urlsplit(origin).netloc != headers.get("host")
+            if cross:
+                response = PlainTextResponse("Requests from other websites are refused.", status_code=403)
+                return await response(scope, receive, send)
+        await self.app(scope, receive, send)
 
 
 def _serve_frontend(app: FastAPI) -> None:

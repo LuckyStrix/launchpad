@@ -40,9 +40,12 @@
   async function run(action, params = {}) {
     busy = true;
     try {
-      data = await api.action(tile.id, action, params);
+      data = (await api.action(tile.id, action, params)) ?? data;
+      note = '';
+      failed = false;
     } catch (e) {
       note = e.message;
+      failed = true;
     } finally {
       busy = false;
     }

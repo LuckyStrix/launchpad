@@ -53,7 +53,18 @@ def current() -> tuple[int, Layout]:
     return rows[0]["id"], Layout.model_validate_json(rows[0]["doc"])
 
 
-def save(layout: Layout) -> int:
+_save_lock = threading.Lock()
+
+
+def save(layout: Layout, base_revision: int | None = None) -> int:
+    """Store a new revision. With `base_revision`, refuse (409) if someone saved since then."""
+    with _save_lock:  # check-then-insert must be atomic across every write path
+        if base_revision is not None and base_revision != current()[0]:
+            raise HTTPException(409, "The layout was changed somewhere else. Reload to get the latest version.")
+        return _insert(layout)
+
+
+def _insert(layout: Layout) -> int:
     revision = db.execute("INSERT INTO layout_revisions (doc) VALUES (?)", (layout.model_dump_json(),))
     db.execute("DELETE FROM layout_revisions WHERE id <= ?", (revision - KEEP_REVISIONS,))
     return revision
@@ -99,15 +110,9 @@ def get_layout():
     return {"revision": revision, "layout": layout}
 
 
-_save_lock = threading.Lock()
-
-
 @router.put("")
 def put_layout(body: SaveRequest):
-    with _save_lock:  # check-then-save must be atomic, or two stale saves could both pass
-        if body.base_revision is not None and body.base_revision != current()[0]:
-            raise HTTPException(409, "The layout was changed somewhere else. Reload to get the latest version.")
-        return {"revision": save(body.layout)}
+    return {"revision": save(body.layout, body.base_revision)}
 
 
 @router.get("/revisions")
