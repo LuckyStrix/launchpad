@@ -1,0 +1,9 @@
+.env
+config/*
+!config/*.example.yaml
+data/
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+frontend/dist/
