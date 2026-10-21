@@ -12,19 +12,24 @@
   let error = $state('');
   let open = $state(false);
   let timer;
+  let latest = 0; // only the newest search may update the list; older replies can arrive later
 
   function search() {
     clearTimeout(timer);
     timer = setTimeout(async () => {
+      const ticket = ++latest;
       searching = true;
       try {
-        results = await api.options(integrationId, field.key, query);
-        error = results.length ? '' : 'No matches.';
+        const found = await api.options(integrationId, field.key, query);
+        if (ticket !== latest) return;
+        results = found;
+        error = found.length ? '' : 'No matches.';
       } catch (e) {
+        if (ticket !== latest) return;
         results = [];
         error = e.message;
       } finally {
-        searching = false;
+        if (ticket === latest) searching = false;
       }
     }, 250);
   }
@@ -76,7 +81,13 @@
             open = true;
             search();
           }}
-          onkeydown={(e) => e.key === 'Escape' && open && (e.stopPropagation(), (open = false))}
+          onkeydown={(e) => {
+            // Close only the suggestions; preventDefault stops the dialog from closing too.
+            if (e.key !== 'Escape' || !open) return;
+            e.preventDefault();
+            e.stopPropagation();
+            open = false;
+          }}
         />
         {#if open}
           <ul id="{id}-list" class="results" role="listbox">

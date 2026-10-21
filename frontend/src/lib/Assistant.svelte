@@ -43,15 +43,23 @@
     queueMicrotask(() => log && (log.scrollTop = log.scrollHeight));
   });
 
+  // Stop any reply still streaming into the conversation we're leaving.
+  function stopStream() {
+    controller?.abort();
+    controller = null;
+    streaming = false;
+  }
+
   async function openSession(id) {
     if (!id) return newChat();
+    stopStream();
     sessionId = id;
     error = '';
     messages = await api.session(id).catch((e) => ((error = e.message), []));
   }
 
   function newChat() {
-    controller?.abort();
+    stopStream();
     sessionId = null;
     messages = [];
     error = '';
@@ -67,9 +75,9 @@
     messages.push({ role: 'assistant', content: '' });
     const reply = messages.at(-1);
     streaming = true;
-    controller = new AbortController();
+    const mine = (controller = new AbortController());
     try {
-      for await (const { event, data } of chat(text, sessionId, controller.signal)) {
+      for await (const { event, data } of chat(text, sessionId, mine.signal)) {
         if (event === 'session') sessionId = data.id;
         else if (event === 'delta') reply.content += data.text;
         else if (event === 'error') error = data.message;
@@ -77,8 +85,12 @@
     } catch (e) {
       if (e.name !== 'AbortError') error = e.message;
     } finally {
-      streaming = false;
-      if (!reply.content) messages.pop();
+      if (controller === mine) {
+        controller = null;
+        streaming = false;
+      }
+      // Remove the empty reply bubble, but only from the conversation it belongs to.
+      if (!reply.content && messages.includes(reply)) messages.splice(messages.indexOf(reply), 1);
       api.sessions().then((list) => (sessions = list)).catch(() => {});
     }
   }

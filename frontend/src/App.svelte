@@ -31,7 +31,10 @@
   function noticeFromUrl() {
     const google = new URLSearchParams(location.search).get('google');
     if (google === 'connected') return 'Google account connected.';
-    if (google === 'error') return "Google sign-in didn't finish. Try connecting again from the tile.";
+    if (google === 'error') {
+      const reason = new URLSearchParams(location.search).get('reason');
+      return `Google sign-in didn't finish${reason ? ` (${reason})` : ''}. Try connecting again from the tile.`;
+    }
     return '';
   }
 
@@ -71,6 +74,7 @@
   const filter = $derived(terms && !board.editing ? matches : null);
 
   function openFirstMatch(event) {
+    if (!terms) return;
     const tile = board.layout.groups.flatMap((g) => g.tiles).find(matches);
     const href = tile && (tileLinks[tile.id] ?? tile.config?.url);
     if (!href) return;

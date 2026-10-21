@@ -13,14 +13,17 @@
   const title = $derived(tile.title || schema?.name || tile.integration);
   let data = $state(null);
   let note = $state('');
+  let failed = $state(false); // the last data fetch failed (not just "not saved yet")
   let busy = $state(false);
 
   async function refresh() {
     try {
       data = await api.tileData(tile.id);
       note = '';
+      failed = false;
     } catch (e) {
       data = null;
+      failed = e.status !== 404;
       note = e.status === 404 ? 'Save the layout to load this tile.' : e.message;
     }
   }
@@ -50,7 +53,7 @@
     tileLinks[tile.id] = href;
   });
 
-  const status = $derived(!schema ? 'error' : data?.error ? data.status : (data?.status ?? 'idle'));
+  const status = $derived(!schema || failed ? 'error' : (data?.status ?? 'idle'));
   const items = $derived((data?.items ?? []).slice(0, ITEM_ROOM[tile.size]));
   const controls = $derived((data?.controls ?? []).slice(0, tile.size === '1x1' ? 2 : 6));
 

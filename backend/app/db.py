@@ -102,5 +102,8 @@ def log_activity(kind: str, name: str, status: str, detail: str = "") -> int:
     )
 
 
-def set_activity_status(activity_id: int, status: str) -> None:
-    execute("UPDATE activity SET status = ? WHERE id = ?", (status, activity_id))
+def set_activity_status(activity_id: int, status: str, detail: str | None = None) -> None:
+    if detail is None:
+        execute("UPDATE activity SET status = ? WHERE id = ?", (status, activity_id))
+    else:
+        execute("UPDATE activity SET status = ?, detail = ? WHERE id = ?", (status, detail[:2000], activity_id))

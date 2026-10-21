@@ -1,6 +1,7 @@
 """The tile layout: groups of tiles, stored as revisioned JSON documents."""
 
 import json
+import threading
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -98,12 +99,15 @@ def get_layout():
     return {"revision": revision, "layout": layout}
 
 
+_save_lock = threading.Lock()
+
+
 @router.put("")
 def put_layout(body: SaveRequest):
-    latest = current()[0]
-    if body.base_revision is not None and body.base_revision != latest:
-        raise HTTPException(409, "The layout was changed somewhere else. Reload to get the latest version.")
-    return {"revision": save(body.layout)}
+    with _save_lock:  # check-then-save must be atomic, or two stale saves could both pass
+        if body.base_revision is not None and body.base_revision != current()[0]:
+            raise HTTPException(409, "The layout was changed somewhere else. Reload to get the latest version.")
+        return {"revision": save(body.layout)}
 
 
 @router.get("/revisions")

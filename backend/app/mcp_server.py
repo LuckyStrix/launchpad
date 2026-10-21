@@ -28,16 +28,21 @@ def _wrap(integration: Integration, fn: Callable, name: str) -> Callable:
 
     @functools.wraps(fn)
     async def run(**kwargs: Any) -> Any:
-        if write and not await approvals.request(name, kwargs):
+        # One activity row per call: pending -> approved/denied/expired -> done/error (writes),
+        # or running -> done/error (reads).
+        args = json.dumps(kwargs)
+        activity_id = db.log_activity("tool", name, "pending" if write else "running", args)
+        if write and not await approvals.request(name, kwargs, activity_id=activity_id):
             return f"The user declined {name}, or didn't answer in time. Nothing was changed."
-        activity_id = None if write else db.log_activity("tool", name, "running", json.dumps(kwargs))
         try:
             result = await fn(**kwargs)
         except IntegrationError as e:
-            db.log_activity("tool", name, "error", str(e))
+            db.set_activity_status(activity_id, "error", f"{args}\n{e}")
             return f"Error: {e}"
-        if activity_id:
-            db.set_activity_status(activity_id, "done")
+        except BaseException as e:
+            db.set_activity_status(activity_id, "error", f"{args}\n{type(e).__name__}: {e}")
+            raise
+        db.set_activity_status(activity_id, "done")
         return result
 
     return run

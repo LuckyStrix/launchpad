@@ -5,9 +5,10 @@ Connect at /api/google/connect. The refresh token is stored in SQLite (data/, ne
 
 import secrets
 import time
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -41,6 +42,19 @@ def _redirect_uri() -> str:
     return f"{settings().public_url}/api/google/callback"
 
 
+def _tz() -> ZoneInfo:
+    """The user's time zone (TZ in .env), so "today" means their today, not UTC's."""
+    try:
+        return ZoneInfo(env("TZ") or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        return ZoneInfo("UTC")
+
+
+def _seg(value: str) -> str:
+    """One URL path segment. Calendar ids can contain '#', e.g. en.usa#holiday@group.v.calendar.google.com."""
+    return quote(value, safe="@")
+
+
 def _client() -> dict[str, str]:
     return {"client_id": env("GOOGLE_CLIENT_ID"), "client_secret": env("GOOGLE_CLIENT_SECRET")}
 
@@ -52,7 +66,11 @@ async def _token_request(data: dict[str, str]) -> dict:
     except httpx.HTTPError:
         raise IntegrationError("Couldn't reach Google.")
     if response.is_error:
-        raise IntegrationError(f"Google refused the sign-in: {response.json().get('error', response.status_code)}")
+        try:
+            reason = response.json().get("error", response.status_code)
+        except ValueError:
+            reason = response.status_code
+        raise IntegrationError(f"Google refused the sign-in: {reason}")
     return response.json()
 
 
@@ -103,18 +121,26 @@ async def connect():
 
 @router.get("/callback")
 async def callback(code: str = "", state: str = "", error: str = ""):
-    if error:
-        return RedirectResponse(f"/?google=error&reason={error}")
+    if error or not code:
+        return _sign_in_failed(error or "no code")
     if not state or state != db.kv_get(STATE_KEY):
         raise HTTPException(400, "This sign-in link has expired. Start again from the Google tile.")
     db.kv_delete(STATE_KEY)
-    grant = await _token_request({"grant_type": "authorization_code", "code": code, "redirect_uri": _redirect_uri()})
+    try:
+        grant = await _token_request({"grant_type": "authorization_code", "code": code,
+                                      "redirect_uri": _redirect_uri()})
+    except IntegrationError as e:
+        return _sign_in_failed(str(e))
     if "refresh_token" not in grant:
         raise HTTPException(400, "Google didn't return a refresh token. Remove Launchpad's access in your Google "
                                  "account settings, then connect again.")
     db.kv_set(TOKEN_KEY, grant["refresh_token"])
     _access.update(token=grant["access_token"], expires=time.time() + grant.get("expires_in", 3600))
     return RedirectResponse("/?google=connected")
+
+
+def _sign_in_failed(reason: str) -> RedirectResponse:
+    return RedirectResponse(f"/?{urlencode({'google': 'error', 'reason': reason})}")
 
 
 @router.get("/status")
@@ -138,7 +164,7 @@ def _when(event: dict, today: date) -> str:
     if "date" in start:
         day = date.fromisoformat(start["date"])
         return "All day" if day == today else f"{day:%a} all day"
-    moment = datetime.fromisoformat(start["dateTime"])
+    moment = datetime.fromisoformat(start["dateTime"]).astimezone(_tz())
     clock = moment.strftime("%-I:%M %p")
     return clock if moment.date() == today else f"{moment:%a} {clock}"
 
@@ -160,9 +186,9 @@ class GoogleCalendar(Integration):
     ]
 
     async def _events(self, calendar: str, days: int) -> list[dict]:
-        now = datetime.now(UTC).astimezone()
+        now = datetime.now(_tz())
         end = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=days)
-        data = await gapi("GET", f"{CALENDAR_API}/calendars/{calendar}/events", params={
+        data = await gapi("GET", f"{CALENDAR_API}/calendars/{_seg(calendar)}/events", params={
             "timeMin": now.isoformat(), "timeMax": end.isoformat(), "singleEvents": "true",
             "orderBy": "startTime", "maxResults": 25})
         return data.get("items", [])
@@ -172,7 +198,7 @@ class GoogleCalendar(Integration):
             events = await self._events(config.get("calendar") or "primary", int(config.get("days") or 1))
         except NotConnected as e:
             return _not_connected(e)
-        today = datetime.now().astimezone().date()
+        today = datetime.now(_tz()).date()
         items = [Item(label=e.get("summary", "(No title)"), detail=_when(e, today), url=e.get("htmlLink"))
                  for e in events]
         if not events:
@@ -200,7 +226,9 @@ class GoogleCalendar(Integration):
         """Create a calendar event. start and end are ISO 8601 date-times with offsets
         (e.g. 2026-10-22T15:00:00-04:00), or YYYY-MM-DD dates for an all-day event."""
         key = "date" if len(start) == 10 else "dateTime"
-        event = await gapi("POST", f"{CALENDAR_API}/calendars/{calendar}/events", json={
+        if key == "date" and end <= start:  # Google's all-day end date is exclusive
+            end = (date.fromisoformat(start) + timedelta(days=1)).isoformat()
+        event = await gapi("POST", f"{CALENDAR_API}/calendars/{_seg(calendar)}/events", json={
             "summary": summary, "description": description, "start": {key: start}, "end": {key: end}})
         return {"id": event["id"], "url": event.get("htmlLink")}
 
@@ -216,7 +244,7 @@ class GoogleTasks(Integration):
     fields = [Field(key="tasklist", label="List", type="picker", default="@default")]
 
     async def _tasks(self, tasklist: str) -> list[dict]:
-        data = await gapi("GET", f"{TASKS_API}/lists/{tasklist}/tasks",
+        data = await gapi("GET", f"{TASKS_API}/lists/{_seg(tasklist)}/tasks",
                           params={"showCompleted": "false", "maxResults": 50})
         return data.get("items", [])
 
@@ -241,7 +269,7 @@ class GoogleTasks(Integration):
     async def _complete(self, task_id: str, tasklist: str) -> None:
         if not task_id:
             raise IntegrationError("That task is missing its ID.")
-        await gapi("PATCH", f"{TASKS_API}/lists/{tasklist}/tasks/{task_id}", json={"status": "completed"})
+        await gapi("PATCH", f"{TASKS_API}/lists/{_seg(tasklist)}/tasks/{_seg(task_id)}", json={"status": "completed"})
 
     async def options(self, field, query):
         data = await gapi("GET", f"{TASKS_API}/users/@me/lists")
@@ -260,7 +288,7 @@ class GoogleTasks(Integration):
         body: dict[str, str] = {"title": title, "notes": notes}
         if due:
             body["due"] = f"{due[:10]}T00:00:00.000Z"
-        task = await gapi("POST", f"{TASKS_API}/lists/{tasklist}/tasks", json=body)
+        task = await gapi("POST", f"{TASKS_API}/lists/{_seg(tasklist)}/tasks", json=body)
         return {"id": task["id"], "title": task["title"]}
 
     @tool(write=True)

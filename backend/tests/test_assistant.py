@@ -109,3 +109,28 @@ def test_mcp_lists_and_calls_tools(client, mock_http):
         {"full_name": "me/proj", "description": None, "private": False, "pushed_at": "2026-10-01"}]))
     result = _result(_rpc(client, "tools/call", {"name": "github_list_repos", "arguments": {}}))
     assert "me/proj" in json.dumps(result)
+
+
+def test_cross_site_writes_are_refused(client):
+    assert client.post("/api/layout/import", content="groups: []",
+                       headers={"sec-fetch-site": "cross-site", "content-type": "text/plain"}).status_code == 403
+    assert client.post("/api/google/disconnect", headers={"origin": "https://evil.example"}).status_code == 403
+    assert client.post("/api/google/disconnect", headers={"sec-fetch-site": "same-origin"}).status_code == 200
+
+
+def test_tool_errors_update_their_own_activity_row(client, mock_http):
+    mock_http(lambda request: httpx.Response(404, json={"message": "Not Found"}))
+    _rpc(client, "tools/call", {"name": "github_repo_status", "arguments": {"repo": "me/gone"}})
+
+    rows = client.get("/api/activity").json()
+    assert [r["status"] for r in rows if r["name"] == "github_repo_status"] == ["error"]
+
+
+def test_unknown_api_paths_are_404_not_the_page(client):
+    from app.main import create_app
+
+    (settings().static_dir).mkdir(parents=True, exist_ok=True)
+    (settings().static_dir / "index.html").write_text("<!doctype html>")
+    with TestClient(create_app()) as c:
+        assert c.get("/some/page").status_code == 200
+        assert c.get("/api/nope").status_code == 404

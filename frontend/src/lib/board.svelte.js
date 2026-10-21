@@ -24,7 +24,7 @@ export const drag = { active: false };
 let savedLayout = null;
 const undoStack = [];
 
-const snapshot = () => structuredClone($state.snapshot(board.layout));
+const snapshot = () => $state.snapshot(board.layout); // already a plain deep copy
 
 export function newId() {
   return crypto.randomUUID?.().replaceAll('-', '').slice(0, 10) ?? Math.random().toString(36).slice(2, 12);
@@ -68,7 +68,8 @@ export function undo() {
   if (!undoStack.length) return;
   board.layout = undoStack.pop();
   board.undoCount = undoStack.length;
-  board.dirty = undoStack.length > 0;
+  // Compare with the saved layout: the stack is capped, so an empty stack doesn't mean "unchanged".
+  board.dirty = JSON.stringify(board.layout) !== JSON.stringify(savedLayout);
 }
 
 export function discard() {

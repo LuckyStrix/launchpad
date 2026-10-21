@@ -28,14 +28,20 @@ class Pending:
 _pending: dict[str, Pending] = {}
 
 
-async def request(tool: str, args: dict[str, Any], timeout: float | None = None) -> bool:
-    activity_id = db.log_activity("tool", tool, "pending", json.dumps(args))
+async def request(tool: str, args: dict[str, Any], timeout: float | None = None,
+                  activity_id: int | None = None) -> bool:
+    """Wait for the user's decision. Records it on `activity_id`, or on a new activity row."""
+    if activity_id is None:
+        activity_id = db.log_activity("tool", tool, "pending", json.dumps(args))
     pending = Pending(id=uuid.uuid4().hex[:12], tool=tool, args=args, activity_id=activity_id)
     _pending[pending.id] = pending
     try:
         approved = await asyncio.wait_for(pending.future, timeout or settings().approval_timeout)
     except TimeoutError:
         approved = None
+    except asyncio.CancelledError:  # Hermes dropped the call
+        db.set_activity_status(activity_id, "cancelled")
+        raise
     finally:
         _pending.pop(pending.id, None)
     db.set_activity_status(activity_id, {True: "approved", False: "denied", None: "expired"}[approved])
