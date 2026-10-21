@@ -77,7 +77,9 @@ class HomeAssistant(Integration):
                                     value=round(attrs["brightness"] / 255 * 100),
                                     params={"service": "turn_on", "field": "brightness_pct"}))
         if domain in RUNNABLE:
+            # A scene's or script's state is just when it last ran; the name says more.
             service, label = RUNNABLE[domain]
+            readout, status = None, "idle"
             controls.append(Control(action="call", label=label, params={"service": service}))
         if domain == "cover":
             controls += [Control(action="call", label="Open", params={"service": "open_cover"}),

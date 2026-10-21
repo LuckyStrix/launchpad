@@ -1,0 +1,180 @@
+/* Launchpad: a parts cabinet. Tiles are drawer fronts with label holders; edit mode
+   shows the pegboard behind them. One accent, label-tape yellow, marks edit mode and focus. */
+
+:root {
+  --enamel: #d9ded8; /* cabinet body / page */
+  --drawer: #f3f4ef; /* tile face */
+  --holder: #e6e9e3; /* recessed label holder */
+  --ink: #1d2422;
+  --muted: #5b6763;
+  --line: #b6beb8;
+  --tape: #e8b421; /* the one accent */
+  --tape-ink: #1d2422;
+  --ok: #2f8a57;
+  --warn: #c98a0b;
+  --error: #c2412f;
+  --idle: #9aa49f;
+  --shadow: 0 1px 0 #fff8 inset, 0 1px 0 #0000000f, 0 2px 6px #1d242214;
+  --peg: #b9c0ba;
+
+  --font: 'Archivo Variable', system-ui, sans-serif;
+  --step--1: 0.8125rem;
+  --step-0: 0.9375rem;
+  --step-1: 1.125rem;
+  --step-2: 1.5rem;
+  --step-3: 2.25rem;
+
+  --cell: 9.5rem;
+  --gap: 0.75rem;
+  --radius: 6px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --enamel: #171c1b;
+    --drawer: #222927;
+    --holder: #1b2120;
+    --ink: #e6eae5;
+    --muted: #97a39e;
+    --line: #38423f;
+    --tape: #f0c043;
+    --ok: #4cb27a;
+    --warn: #e0a83a;
+    --error: #e0644f;
+    --idle: #6c7773;
+    --shadow: 0 1px 0 #ffffff0a inset, 0 2px 8px #0006;
+    --peg: #2c3432;
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font);
+  font-size: 100%;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--enamel);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--enamel);
+  font-size: var(--step-0);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--tape);
+  outline-offset: 2px;
+}
+
+/* Buttons: plain by default, `.primary` is the tape-yellow commit action. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.45em 0.9em;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--drawer);
+  cursor: pointer;
+  font-weight: 550;
+  font-size: var(--step--1);
+  white-space: nowrap;
+}
+.btn:hover {
+  border-color: var(--muted);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.btn.primary {
+  background: var(--tape);
+  border-color: var(--tape);
+  color: var(--tape-ink);
+}
+.btn.quiet {
+  border-color: transparent;
+  background: transparent;
+}
+.btn.danger {
+  color: var(--error);
+}
+
+.field {
+  display: grid;
+  gap: 0.3rem;
+}
+.field > span {
+  font-size: var(--step--1);
+  font-weight: 600;
+}
+.field small {
+  color: var(--muted);
+  font-size: var(--step--1);
+}
+.input {
+  width: 100%;
+  padding: 0.55em 0.7em;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--holder);
+}
+
+.lamp {
+  display: inline-block;
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--idle);
+}
+.lamp.ok {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent);
+}
+.lamp.warn {
+  background: var(--warn);
+}
+.lamp.error {
+  background: var(--error);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
