@@ -48,8 +48,8 @@ def test_approval_gate(client):
     async def scenario():
         waiting = asyncio.create_task(approvals.request("github_create_issue", {"title": "x"}, timeout=5))
         await asyncio.sleep(0)
-        [pending] = approvals.list_pending()
-        approvals.decide(pending["id"], approvals.Decision(approve=True))
+        [pending] = await approvals.list_pending()
+        await approvals.decide(pending["id"], approvals.Decision(approve=True))
         return await waiting
 
     assert asyncio.run(scenario()) is True

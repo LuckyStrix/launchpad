@@ -18,6 +18,7 @@
   let messages = $state([]);
   let draft = $state('');
   let streaming = $state(false);
+  let loading = $state(false); // a conversation is loading; sending now would mix it with the old one
   let error = $state('');
   let controller = null;
   let log;
@@ -33,7 +34,7 @@
 
   $effect(() => {
     if (!open) return;
-    api.sessions().then((list) => (sessions = list)).catch(() => {});
+    refreshSessions();
     queueMicrotask(() => input?.focus());
   });
 
@@ -54,13 +55,18 @@
     if (!id) return newChat();
     stopStream();
     sessionId = id;
+    messages = [];
     error = '';
+    loading = true;
     const loaded = await api.session(id).catch((e) => ((error = e.message), []));
-    if (sessionId === id) messages = loaded; // ignore a slower load for a conversation we've left
+    if (sessionId !== id) return; // a slower load for a conversation we've already left
+    messages = loaded;
+    loading = false;
   }
 
   function newChat() {
     stopStream();
+    loading = false;
     sessionId = null;
     messages = [];
     error = '';
@@ -69,7 +75,7 @@
 
   async function send(text = draft) {
     text = text.trim();
-    if (!text || streaming) return;
+    if (!text || streaming || loading) return;
     draft = '';
     error = '';
     messages.push({ role: 'user', content: text });
@@ -86,13 +92,15 @@
     } catch (e) {
       if (e.name !== 'AbortError') error = e.message;
     } finally {
-      if (controller === mine) {
-        controller = null;
-        streaming = false;
-      }
       // Remove the empty reply bubble, but only from the conversation it belongs to.
       if (!reply.content && messages.includes(reply)) messages.splice(messages.indexOf(reply), 1);
-      api.sessions().then((list) => (sessions = list)).catch(() => {});
+      if (controller === mine) {
+        // Still the current conversation: finish up. (If it was stopped by switching or
+        // deleting, whoever stopped it owns the session list now.)
+        controller = null;
+        streaming = false;
+        refreshSessions();
+      }
     }
   }
 
@@ -103,12 +111,20 @@
     }
   }
 
+  function refreshSessions() {
+    api.sessions().then((list) => (sessions = list)).catch(() => {});
+  }
+
   async function removeSession() {
     if (!sessionId) return;
     const id = sessionId;
     newChat(); // stop any reply first, so it isn't saved into the deleted conversation
-    await api.deleteSession(id).catch(() => {});
-    sessions = sessions.filter((s) => s.id !== id);
+    try {
+      await api.deleteSession(id);
+    } catch (e) {
+      error = `Couldn't delete that conversation: ${e.message}`;
+    }
+    refreshSessions();
   }
 
   const describe = (args) => Object.entries(args).filter(([, v]) => v !== '' && v != null);
@@ -204,7 +220,7 @@
     {#if streaming}
       <button type="button" class="btn" onclick={() => controller?.abort()}>Stop</button>
     {:else}
-      <button type="submit" class="btn primary" disabled={!draft.trim()}>Send</button>
+      <button type="submit" class="btn primary" disabled={!draft.trim() || loading}>Send</button>
     {/if}
   </form>
 </aside>

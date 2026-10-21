@@ -36,6 +36,8 @@ def test_all_day_end_date_is_inclusive(client, mock_http, monkeypatch):
     assert b'"end":{"date":"2026-10-25"}' in seen[1].content.replace(b" ", b"")
     with pytest.raises(IntegrationError):
         asyncio.run(calendar.create_event("Trip", "2026-10-22", "2026-10-22T17:00:00-04:00"))
+    with pytest.raises(IntegrationError):
+        asyncio.run(calendar.create_event("Trip", "2026-10-22T15:00:00-04:00", "2026-10-22"))
 
 
 def test_expired_sign_in_redirects_and_connect_refuses_other_sites(client, monkeypatch):
@@ -46,8 +48,8 @@ def test_expired_sign_in_redirects_and_connect_refuses_other_sites(client, monke
 
     expired = client.get("/api/google/callback?code=c&state=old", follow_redirects=False)
     assert expired.headers["location"].startswith("/?google=error&reason=this+sign-in+link+has+expired")
-    assert client.get("/api/google/connect", headers={"sec-fetch-site": "cross-site"},
-                      follow_redirects=False).status_code == 403
+    refused = client.get("/api/google/connect", headers={"sec-fetch-site": "cross-site"}, follow_redirects=False)
+    assert refused.headers["location"].startswith("/?google=error")
     assert client.get("/api/google/connect", follow_redirects=False).status_code == 307
 
 

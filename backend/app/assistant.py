@@ -8,6 +8,7 @@
 """
 
 import json
+import logging
 import uuid
 from collections.abc import AsyncIterator
 
@@ -26,6 +27,8 @@ Launchpad gives you tools over MCP (named launchpad_*) for their GitHub repos, G
 Home Assistant control comes from your own Home Assistant tools. Actions that change something wait for the user
 to approve them on the page. The tiles currently on their homepage:
 {tiles}"""
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 
@@ -112,6 +115,9 @@ async def chat(body: ChatRequest):
                 yield _sse("delta", {"text": text})
         except httpx.HTTPError as e:
             yield _sse("error", {"message": _error_message(e)})
+        except Exception as e:
+            log.exception("Chat stream failed")
+            yield _sse("error", {"message": f"Hermes's reply broke off ({type(e).__name__}). Try again."})
         finally:
             if reply:
                 # The session may have been deleted while Hermes was replying; then there's nothing to save.

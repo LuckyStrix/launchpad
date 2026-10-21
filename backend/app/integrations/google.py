@@ -3,6 +3,7 @@
 Connect at /api/google/connect. The refresh token is stored in SQLite (data/, never in git).
 """
 
+import re
 import secrets
 import time
 from datetime import date, datetime, timedelta
@@ -30,6 +31,8 @@ SCOPES = " ".join([
 TOKEN_KEY = "google.refresh_token"
 STATE_KEY = "google.oauth_state"
 REQUIRES = ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "PUBLIC_URL")
+
+DATE_ONLY = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 _access: dict[str, Any] = {"token": None, "expires": 0.0}
 
@@ -112,7 +115,7 @@ router = APIRouter(prefix="/api/google", tags=["google"])
 async def connect(request: Request):
     # A GET, so the same-origin guard doesn't cover it: refuse other sites resetting a sign-in in progress.
     if request.headers.get("sec-fetch-site", "none") not in ("same-origin", "none"):
-        raise HTTPException(403, "Start Google sign-in from Launchpad itself.")
+        return _sign_in_failed("start Google sign-in from Launchpad itself")
     if not settings().public_url or not all(_client().values()):
         raise HTTPException(400, "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and PUBLIC_URL in .env first.")
     state = secrets.token_urlsafe(24)
@@ -229,12 +232,13 @@ class GoogleCalendar(Integration):
         """Create a calendar event. start and end are ISO 8601 date-times with offsets
         (e.g. 2026-10-22T15:00:00-04:00), or YYYY-MM-DD dates for an all-day event, where
         end is the last day of the event (2026-10-22 to 2026-10-24 is three days)."""
-        key = "date" if len(start) == 10 else "dateTime"
-        if key == "date":
-            try:
-                first, last = date.fromisoformat(start), date.fromisoformat(end)
-            except ValueError:
-                raise IntegrationError("For an all-day event, give start and end as YYYY-MM-DD dates.")
+        all_day = [bool(DATE_ONLY.fullmatch(v)) for v in (start, end)]
+        if all_day[0] != all_day[1]:
+            raise IntegrationError("Give start and end in the same form: both YYYY-MM-DD dates (all day), "
+                                   "or both date-times with offsets.")
+        key = "date" if all_day[0] else "dateTime"
+        if all_day[0]:
+            first, last = date.fromisoformat(start), date.fromisoformat(end)
             if last < first:
                 raise IntegrationError("The event ends before it starts.")
             end = (last + timedelta(days=1)).isoformat()  # Google's all-day end date is exclusive

@@ -19,13 +19,22 @@
   async function refresh() {
     try {
       data = await api.tileData(tile.id);
-      note = '';
-      failed = false;
+      ok();
     } catch (e) {
       data = null;
-      failed = e.status !== 404;
-      note = e.status === 404 ? 'Save the layout to load this tile.' : e.message;
+      fail(e);
     }
+  }
+
+  function ok() {
+    note = '';
+    failed = false;
+  }
+
+  // A 404 means the tile isn't saved yet, which isn't a fault.
+  function fail(e) {
+    failed = e.status !== 404;
+    note = e.status === 404 ? 'Save the layout to load this tile.' : e.message;
   }
 
   $effect(() => {
@@ -40,12 +49,10 @@
   async function run(action, params = {}) {
     busy = true;
     try {
-      data = (await api.action(tile.id, action, params)) ?? data;
-      note = '';
-      failed = false;
+      data = await api.action(tile.id, action, params);
+      ok();
     } catch (e) {
-      note = e.message;
-      failed = true;
+      fail(e);
     } finally {
       busy = false;
     }

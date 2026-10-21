@@ -55,13 +55,14 @@ class Decision(BaseModel):
     approve: bool
 
 
+# async: these touch _pending and its futures, which belong to the event loop, not a worker thread.
 @router.get("/approvals")
-def list_pending():
+async def list_pending():
     return [{"id": p.id, "tool": p.tool, "args": p.args, "created_at": p.created_at} for p in _pending.values()]
 
 
 @router.post("/approvals/{approval_id}")
-def decide(approval_id: str, decision: Decision):
+async def decide(approval_id: str, decision: Decision):
     pending = _pending.get(approval_id)
     if not pending or pending.future.done():
         raise HTTPException(404, "That request already finished or expired.")
