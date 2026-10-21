@@ -1,0 +1,32 @@
+# Starting layout, loaded on first run. Copy to config/layout.yaml to use your own.
+# After first run, edit tiles in the UI (Edit button); this file is only read again
+# if the database is empty. Ids are optional here and are generated when missing.
+groups:
+  - title: Today
+    tiles:
+      - integration: google_calendar
+        title: Calendar
+        size: 2x2
+        config: {calendar: primary, days: "1"}
+      - integration: google_tasks
+        title: Tasks
+        size: 1x2
+        config: {tasklist: "@default"}
+      - integration: hermes
+        title: Hermes
+  - title: Home
+    tiles:
+      - integration: link
+        title: Home Assistant
+        icon: si:homeassistant
+        config: {url: "http://homeassistant.local:8123", check: true}
+  - title: Code
+    tiles:
+      - integration: link
+        title: GitHub
+        icon: si:github
+        config: {url: "https://github.com", check: false}
+      - integration: github
+        title: Launchpad
+        size: 2x1
+        config: {repo: LuckyStrix/launchpad}

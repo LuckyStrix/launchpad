@@ -1,0 +1,78 @@
+"""Launchpad's MCP server: every `@tool` method of a configured integration, served at /mcp
+so Hermes can call it. Tools are named `<integration id>_<method name>`."""
+
+import functools
+import hmac
+import inspect
+import json
+from collections.abc import Callable
+from typing import Any
+
+from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
+from starlette.routing import BaseRoute
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+from . import approvals, db
+from .integrations.base import Integration, IntegrationError
+
+INSTRUCTIONS = (
+    "Tools for the user's Launchpad homepage: their GitHub repos, Google Calendar and Google Tasks. "
+    "Tools that change something wait for the user to approve them on the Launchpad page; if one comes back "
+    "declined, tell the user and don't retry unless they ask."
+)
+
+
+def _wrap(integration: Integration, fn: Callable, name: str) -> Callable:
+    write = fn._launchpad_tool["write"]
+
+    @functools.wraps(fn)
+    async def run(**kwargs: Any) -> Any:
+        if write and not await approvals.request(name, kwargs):
+            return f"The user declined {name}, or didn't answer in time. Nothing was changed."
+        activity_id = None if write else db.log_activity("tool", name, "running", json.dumps(kwargs))
+        try:
+            result = await fn(**kwargs)
+        except IntegrationError as e:
+            db.log_activity("tool", name, "error", str(e))
+            return f"Error: {e}"
+        if activity_id:
+            db.set_activity_status(activity_id, "done")
+        return result
+
+    return run
+
+
+def build(registry: dict[str, Integration]) -> tuple[MCPServer, list[BaseRoute]]:
+    server = MCPServer("launchpad", instructions=INSTRUCTIONS)
+    for integration in registry.values():
+        if not integration.configured:
+            continue
+        for fn in integration.tools():
+            name = f"{integration.id}_{fn.__name__}"
+            server.add_tool(_wrap(integration, fn, name), name=name, description=inspect.getdoc(fn))
+    app = server.streamable_http_app(
+        streamable_http_path="/mcp",
+        stateless_http=True,
+        # Hermes reaches us by container name, not localhost; McpAuth below guards access instead.
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    )
+    return server, list(app.routes)
+
+
+class McpAuth:
+    """Require `Authorization: Bearer <LAUNCHPAD_MCP_TOKEN>` on /mcp when a token is set."""
+
+    def __init__(self, app: ASGIApp, token: str):
+        self.app, self.token = app, token
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if self.token and scope["type"] == "http" and scope["path"].startswith("/mcp"):
+            headers = dict(scope["headers"])
+            given = headers.get(b"authorization", b"").decode()
+            if not hmac.compare_digest(given, f"Bearer {self.token}"):
+                await send({"type": "http.response.start", "status": 401,
+                            "headers": [(b"content-type", b"text/plain")]})
+                await send({"type": "http.response.body", "body": b"Missing or wrong MCP token."})
+                return
+        await self.app(scope, receive, send)

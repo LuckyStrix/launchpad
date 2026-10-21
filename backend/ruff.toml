@@ -1,0 +1,10 @@
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = [
+  "B008",   # FastAPI's Body()/Depends() defaults are idiomatic
+  "B904",   # IntegrationError messages are meant for users; no chaining needed
+  "SIM117", # nested `async with` reads better for client + stream
+]
