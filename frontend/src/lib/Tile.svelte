@@ -66,7 +66,9 @@
   const dims = $derived(sizeOf(tile.size));
   // Room for list rows: none on a single small cell, about three per extra row of height.
   const itemRoom = $derived(dims[1] === 1 ? (dims[0] > 1 ? 2 : 0) : 3 * dims[1] - 1 + (dims[0] > 1 ? 2 : 0));
-  const items = $derived((data?.items ?? []).slice(0, itemRoom));
+  const grid = $derived(data?.layout === 'grid');
+  // Cards scale with the tile, so a grid shows them all (anything past the bottom is clipped).
+  const items = $derived(grid ? (data?.items ?? []) : (data?.items ?? []).slice(0, itemRoom));
   const controls = $derived((data?.controls ?? []).slice(0, dims[0] * dims[1] === 1 ? 2 : 6 * dims[0]));
 
   // Resize by dragging the corner grip (one undo point per drag) or with the arrow keys.
@@ -140,7 +142,36 @@
     {:else if data}
       {#if data.value}<p class="value">{data.value}</p>{/if}
       {#if data.detail}<p class="detail">{data.detail}</p>{/if}
-      {#if items.length}
+      {#if grid && items.length}
+        <ul class="cards">
+          {#each items as item, i (i)}
+            <li>
+              {#if item.action && item.kind !== 'check' && !board.editing}
+                <button
+                  class="card raised"
+                  class:on={item.on}
+                  class:warn={item.status === 'warn'}
+                  role={item.kind === 'switch' ? 'switch' : undefined}
+                  aria-checked={item.kind === 'switch' ? !!item.on : undefined}
+                  aria-label={item.kind === 'switch' ? item.label : `${item.action_label}: ${item.label}`}
+                  disabled={busy}
+                  onclick={() => run(item.action, item.params)}
+                >
+                  <span class="card-icon" aria-hidden="true">{item.icon ?? '•'}</span>
+                  <span class="card-name">{item.label}</span>
+                  <span class="card-state">{item.kind === 'button' ? item.action_label : item.detail}</span>
+                </button>
+              {:else}
+                <div class="card" class:on={item.on} class:warn={item.status === 'warn'}>
+                  <span class="card-icon" aria-hidden="true">{item.icon ?? '•'}</span>
+                  <span class="card-name">{item.label}</span>
+                  <span class="card-state">{item.kind === 'button' ? item.action_label : item.detail}</span>
+                </div>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {:else if items.length}
         <ul class="items">
           {#each items as item, i (i)}
             <li>
@@ -294,6 +325,7 @@
   .body {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
@@ -408,6 +440,79 @@
   .switch[aria-checked='true'] {
     background: var(--ok);
     border-color: var(--ok);
+  }
+  /* Grid tiles: each item is a small card, lit with the label-tape yellow while it's on. */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(5.6rem, 100%), 1fr));
+    min-width: 0;
+    grid-auto-rows: 5.5rem;
+    gap: 0.4rem;
+    margin: 0.2rem 0 0;
+    padding: 0;
+    list-style: none;
+    overflow: hidden;
+  }
+  .card {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    align-content: start;
+    width: 100%;
+    height: 100%;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--holder);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    overflow: hidden;
+  }
+  button.card {
+    cursor: pointer;
+    transition: background-color 120ms, border-color 120ms;
+  }
+  button.card:hover {
+    border-color: var(--muted);
+  }
+  .card.on {
+    border-color: var(--tape);
+    background: color-mix(in srgb, var(--tape) 32%, var(--drawer));
+  }
+  .card.warn {
+    opacity: 0.6;
+  }
+  .card-icon {
+    font-size: 1.15rem;
+    line-height: 1;
+  }
+  .card-name {
+    align-self: end;
+    font-size: var(--step--1);
+    font-weight: 700;
+    line-height: 1.15;
+    hyphens: auto;
+    overflow-wrap: anywhere; /* a long single word wraps instead of running off the card */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .card-state {
+    color: var(--muted);
+    font-size: 0.72rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card.on .card-state {
+    color: inherit;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button.card {
+      transition: none;
+    }
   }
   .switch.small {
     flex: none;

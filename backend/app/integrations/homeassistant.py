@@ -13,6 +13,12 @@ RUNNABLE = {"scene": ("turn_on", "Activate"), "script": ("turn_on", "Run"), "but
             "input_button": ("press", "Press")}
 ACTIVE_STATES = {"on", "open", "opening", "home", "playing", "heat", "cool", "heat_cool", "auto"}
 SERVICE_NAME = re.compile(r"^[a-z_]+$")
+DOMAIN_ICONS = {"light": "💡", "switch": "🔌", "fan": "🌀", "climate": "🌡️", "cover": "🪟", "lock": "🔒",
+                "media_player": "🔈", "scene": "🎬", "script": "📜", "automation": "⚙️", "button": "🔘",
+                "input_button": "🔘", "input_boolean": "🔘", "binary_sensor": "◉", "person": "👤",
+                "humidifier": "💧", "siren": "🚨", "vacuum": "🧹"}
+SENSOR_ICONS = {"temperature": "🌡️", "humidity": "💧", "power": "⚡", "energy": "⚡", "battery": "🔋",
+                "illuminance": "☀️"}
 
 
 def _number(value: Any) -> str:
@@ -145,11 +151,15 @@ class HomeAssistantList(HomeAssistant):
     switches (or a Run button for scenes and scripts). For full controls, use one Home Assistant tile."""
 
     id = "homeassistant_list"
-    name = "Home Assistant list"
-    description = "Several devices and sensors in one tile, with on/off switches."
+    name = "Home Assistant group"
+    description = "Several devices and sensors in one tile, as tappable buttons or a list."
     default_size = "2x2"
-    fields = [Field(key="entities", label="Entities", type="multipicker", required=True,
-                    help="Search by name or entity ID. Lights and switches get an on/off switch.")]
+    fields = [
+        Field(key="entities", label="Entities", type="multipicker", required=True,
+              help="Search by name or entity ID. Drag the chips, or use the arrow keys on one, to arrange them."),
+        Field(key="style", label="Show as", type="select", default="grid",
+              options=[{"value": "grid", "label": "Buttons, like a phone widget"}, {"value": "list", "label": "List"}]),
+    ]
 
     def _chosen(self, config: dict) -> list[str]:
         chosen = config.get("entities") or []
@@ -164,8 +174,9 @@ class HomeAssistantList(HomeAssistant):
         switches = [i for i in items if i.kind == "switch"]
         on = sum(1 for i in switches if i.on)
         public = (self.env("HASS_PUBLIC_URL") or self.env("HASS_URL")).rstrip("/")
-        return TileData(status="ok" if on else "idle", items=items, url=public,
-                        value=f"{on} of {len(switches)} on" if switches else None)
+        grid = config.get("style") == "grid"  # tiles saved before the option existed are lists
+        return TileData(status="ok" if on else "idle", items=items, url=public, layout="grid" if grid else "list",
+                        value=f"{on} of {len(switches)} on" if switches and not grid else None)
 
     def _row(self, entity_id: str, state: dict | None) -> Item:
         if state is None:
@@ -175,17 +186,19 @@ class HomeAssistantList(HomeAssistant):
         name = attrs.get("friendly_name") or entity_id
         unit = attrs.get("unit_of_measurement")
         status = "warn" if value in ("unavailable", "unknown") else "ok" if value in ACTIVE_STATES else "idle"
+        icon = DOMAIN_ICONS.get(domain) or SENSOR_ICONS.get(attrs.get("device_class"), "📟")
         if domain in TOGGLEABLE:
-            return Item(label=name, status=status, kind="switch", on=value == "on", action="flip",
+            return Item(label=name, status=status, kind="switch", on=value == "on", action="flip", icon=icon,
+                        detail="On" if value == "on" else "Off" if value == "off" else value,
                         action_label="Turn off" if value == "on" else "Turn on", params={"entity_id": entity_id})
         if domain in RUNNABLE:
-            return Item(label=name, kind="button", action="flip", action_label=RUNNABLE[domain][1],
+            return Item(label=name, kind="button", action="flip", action_label=RUNNABLE[domain][1], icon=icon,
                         params={"entity_id": entity_id})
         if domain == "climate":
             detail = f"{_number(attrs.get('current_temperature'))}°, {value}"
         else:
             detail = f"{_number(value)} {unit}" if unit else value.replace("_", " ")
-        return Item(label=name, detail=detail, status=status)
+        return Item(label=name, detail=detail, status=status, icon=icon)
 
     @action
     async def flip(self, config, params):

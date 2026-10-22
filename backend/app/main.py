@@ -86,4 +86,6 @@ def _serve_frontend(app: FastAPI) -> None:
         file = (static / path).resolve()
         if path and file.is_file() and file.is_relative_to(static.resolve()):
             return FileResponse(file)
-        return FileResponse(static / "index.html")
+        # Always revalidate the page, so a rebuilt app shows up on the next reload. Its scripts
+        # and styles have content-hashed names, so they can still be cached.
+        return FileResponse(static / "index.html", headers={"Cache-Control": "no-cache"})

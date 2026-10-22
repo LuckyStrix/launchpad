@@ -110,17 +110,20 @@ def test_homeassistant_list_shows_rows_with_switches(client, mock_http):
 
     mock_http(lambda request: httpx.Response(200, json=STATES))
     config = {"entities": ["sensor.temp", "light.desk", "switch.fan", "scene.movie", "light.gone"]}
-    data = asyncio.run(registry["homeassistant_list"].fetch(config))
+    data = asyncio.run(registry["homeassistant_list"].fetch(config))  # saved before "style": a list
 
-    assert data.value == "1 of 2 on"
-    assert [(i.label, i.kind, i.on, i.detail) for i in data.items] == [
-        ("Office", "check", None, "21.5 °C"),
-        ("Desk lamp", "switch", True, None),
-        ("Fan", "switch", False, None),
-        ("Movie night", "button", None, None),
-        ("light.gone", "check", None, "Not found in Home Assistant"),
+    assert data.layout == "list" and data.value == "1 of 2 on"
+    assert [(i.label, i.kind, i.on, i.detail, i.icon) for i in data.items] == [
+        ("Office", "check", None, "21.5 °C", "📟"),
+        ("Desk lamp", "switch", True, "On", "💡"),
+        ("Fan", "switch", False, "Off", "🔌"),
+        ("Movie night", "button", None, None, "🎬"),
+        ("light.gone", "check", None, "Not found in Home Assistant", None),
     ]
     assert data.items[0].action is None  # sensors are view-only
+
+    grid = asyncio.run(registry["homeassistant_list"].fetch({**config, "style": "grid"}))
+    assert grid.layout == "grid" and grid.value is None
 
 
 def test_homeassistant_list_only_flips_its_own_entities(client, mock_http):

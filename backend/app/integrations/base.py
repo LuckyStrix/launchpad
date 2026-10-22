@@ -41,6 +41,7 @@ class Item(BaseModel):
     params: dict[str, Any] = {}
     kind: Literal["check", "switch", "button"] = "check"
     on: bool | None = None
+    icon: str | None = None  # shown on cards in a "grid" tile
 
 
 class Control(BaseModel):
@@ -65,6 +66,7 @@ class TileData(BaseModel):
     value: str | None = None  # the big readout
     detail: str | None = None  # one secondary line
     items: list[Item] = []
+    layout: Literal["list", "grid"] = "list"  # grid: items as tappable cards, like a phone widget
     controls: list[Control] = []
     url: str | None = None  # where clicking the tile goes
     error: str | None = None

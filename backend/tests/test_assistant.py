@@ -132,7 +132,8 @@ def test_unknown_api_paths_are_404_not_the_page(client):
     (settings().static_dir).mkdir(parents=True, exist_ok=True)
     (settings().static_dir / "index.html").write_text("<!doctype html>")
     with TestClient(create_app()) as c:
-        assert c.get("/some/page").status_code == 200
+        page = c.get("/some/page")
+        assert page.status_code == 200 and page.headers["cache-control"] == "no-cache"
         assert c.get("/api/nope").status_code == 404
 
 

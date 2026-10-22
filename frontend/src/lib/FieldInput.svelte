@@ -60,6 +60,24 @@
 
   const unpick = (v) => (value = chosen.filter((c) => c !== v));
 
+  // Reorder chips: native drag and drop (it works inside the modal <dialog>, where the drag
+  // library's floating copy would sit behind it), or the arrow keys on a focused chip.
+  let dragging = $state(null);
+  function move(from, to) {
+    if (from === to || to < 0 || to >= chosen.length) return;
+    const next = [...chosen];
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    value = next;
+  }
+  function chipKey(event, i) {
+    const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    move(i, i + step);
+    const chips = event.currentTarget.parentElement;
+    queueMicrotask(() => chips.children[i + step]?.focus());
+  }
+
   // Saved multipicker values are bare ids; one search fills in their labels for the chips.
   untrack(() => multi && chosen.length && search());
 </script>
@@ -83,14 +101,28 @@
     {:else if field.type === 'picker' || multi}
       <div class="picker">
         {#if chosen.length}
-          <ul class="chips">
-            {#each chosen as v (v)}
-              <li>
+          <div class="chips">
+            {#each chosen as v, i (v)}
+              <div
+                class="chip"
+                draggable="true"
+                tabindex="0"
+                role="button"
+                aria-roledescription="reorderable item"
+                aria-label="{labels[v] ?? v}, {i + 1} of {chosen.length}. Arrow keys move it."
+                title="Drag, or use the arrow keys, to reorder"
+                class:dragging={dragging === i}
+                ondragstart={(e) => ((dragging = i), (e.dataTransfer.effectAllowed = 'move'))}
+                ondragover={(e) => e.preventDefault()}
+                ondrop={(e) => (e.preventDefault(), move(dragging, i))}
+                ondragend={() => (dragging = null)}
+                onkeydown={(e) => chipKey(e, i)}
+              >
                 {labels[v] ?? v}
                 <button type="button" onclick={() => unpick(v)} aria-label="Remove {labels[v] ?? v}">✕</button>
-              </li>
+              </div>
             {/each}
-          </ul>
+          </div>
         {/if}
         <input
           {id}
@@ -209,7 +241,8 @@
     padding: 0;
     list-style: none;
   }
-  .chips li {
+  .chip {
+    cursor: grab;
     display: flex;
     align-items: center;
     gap: 0.25rem;
@@ -218,6 +251,12 @@
     background: var(--holder);
     font-size: var(--step--1);
     font-weight: 600;
+  }
+  .chip.dragging {
+    opacity: 0.4;
+  }
+  .chip:focus-visible {
+    outline: 3px solid var(--tape);
   }
   .chips button {
     width: 1.4rem;
