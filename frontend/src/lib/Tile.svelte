@@ -62,7 +62,15 @@
     board.changes[schema?.source ?? tile.integration]; // its data changed (a tile button, Hermes, sign-in)
     refresh();
     const timer = setInterval(() => document.hidden || refresh(), (schema?.refresh ?? 60) * 1000);
-    const back = () => document.hidden || refresh(); // back to the tab, or back online
+    // Back to the tab, or back online: fresh retry budget, and one refresh even though waking a
+    // computer usually fires both events.
+    let lastBack = 0;
+    const back = () => {
+      if (document.hidden || Date.now() - lastBack < 1500) return;
+      lastBack = Date.now();
+      misses = 0;
+      refresh();
+    };
     document.addEventListener('visibilitychange', back);
     window.addEventListener('online', back);
     return () => {

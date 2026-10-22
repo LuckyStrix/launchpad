@@ -163,3 +163,15 @@ def test_home_assistant_tiles_share_one_source():
 
     assert registry["homeassistant"].source == registry["homeassistant_list"].source == "homeassistant"
     assert registry["google_calendar"].source == "google_calendar"
+
+
+def test_slow_tile_data_hits_the_deadline(client, monkeypatch):
+    from app.integrations import registry
+
+    async def slow(config):
+        await asyncio.sleep(1)
+
+    monkeypatch.setattr(tiles, "LOAD_DEADLINE", 0.05)
+    monkeypatch.setattr(registry["link"], "fetch", slow)
+    data = client.get("/api/tiles/site/data").json()
+    assert data["status"] == "error" and "took more than" in data["error"]

@@ -1,6 +1,7 @@
 """Tile data, actions and editor pickers. Tile config is always read from the saved layout,
 never from the request, so the browser can only trigger actions a tile was set up for."""
 
+import asyncio
 import json
 import logging
 import time
@@ -33,12 +34,18 @@ def _tile(tile_id: str) -> tuple[layout.Tile, Integration]:
     return tile, _integration(tile.integration)
 
 
-async def _guard(integration: Integration, call) -> TileData:
-    """Turn every failure into a tile the user can read."""
+LOAD_DEADLINE = 20  # seconds; the browser waits 25 for tile data, so it always hears back
+
+
+async def _guard(integration: Integration, call, deadline: float | None = None) -> TileData:
+    """Turn every failure into a tile the user can read. Loading data has a `deadline`; actions
+    don't, since cutting a change off halfway would leave it unclear whether it happened."""
     if not integration.configured:
         return TileData(status="warn", error=f"Set {', '.join(integration.missing)} in .env to use this tile.")
     try:
-        return await call() or TileData()
+        return await asyncio.wait_for(call(), deadline) or TileData()
+    except TimeoutError:
+        return TileData(status="error", error=f"{integration.name} took more than {deadline} seconds to answer.")
     except IntegrationError as e:
         return TileData(status="error", error=str(e))
     except httpx.HTTPError as e:
@@ -73,7 +80,7 @@ async def tile_data(tile_id: str) -> TileData:
     ttl = max(5, integration.refresh // 2)
     if cached and cached[1:3] == (key, version) and time.monotonic() - cached[0] < ttl:
         return cached[3]
-    data = await _guard(integration, lambda: integration.fetch(tile.config))
+    data = await _guard(integration, lambda: integration.fetch(tile.config), LOAD_DEADLINE)
     # Only cache healthy results: after fixing a problem (signing in, setting a token, bringing
     # a service back) the tile should recover on the next refresh, not after the cache expires.
     if data.status in ("ok", "idle") and not data.error:

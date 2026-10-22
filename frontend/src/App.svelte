@@ -70,7 +70,8 @@
 
   async function decide(id, approve) {
     approvals = approvals.filter((a) => a.id !== id);
-    await api.decide(id, approve).catch((e) => (notice = e.message));
+    // On failure, re-check: the card comes back only if the request is really still waiting.
+    await api.decide(id, approve).catch((e) => ((notice = e.message), pollApprovals()));
   }
 
   $effect(() => {
