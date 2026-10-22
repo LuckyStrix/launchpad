@@ -52,7 +52,7 @@ Raise `IntegrationError("...")` for expected failures. The message is shown on t
 
 A `Field` has a `type`, which is one of `text`, `url`, `number`, `bool`, `select` (with `options=[{"value", "label"}]`), `textarea`, `picker`, or `multipicker` (several picked values, saved as a list).
 
-A **picker** searches as you type by calling `options(field, query)`, which returns `Option(value, label, detail)`. Picking an option also names the tile, if it doesn't have a name yet.
+A **picker** searches as you type by calling `options(field, query)`, which returns `Option(value, label, detail)`. Picking an option in a `picker` also names the tile, if it doesn't have a name yet.
 
 ```python
     async def options(self, field, query):

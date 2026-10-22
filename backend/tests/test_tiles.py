@@ -1,6 +1,8 @@
+import asyncio
 import json
 
 import httpx
+import pytest
 
 from app import tiles
 
@@ -92,3 +94,46 @@ def test_problem_tiles_are_not_cached(client, mock_http):
 
     mock_http(lambda request: httpx.Response(200))
     assert client.get("/api/tiles/site/data").json()["status"] == "ok"  # recovers at once
+
+
+STATES = [
+    {"entity_id": "light.desk", "state": "on", "attributes": {"friendly_name": "Desk lamp"}},
+    {"entity_id": "switch.fan", "state": "off", "attributes": {"friendly_name": "Fan"}},
+    {"entity_id": "sensor.temp", "state": "21.46",
+     "attributes": {"friendly_name": "Office", "unit_of_measurement": "°C"}},
+    {"entity_id": "scene.movie", "state": "2026-10-20", "attributes": {"friendly_name": "Movie night"}},
+]
+
+
+def test_homeassistant_list_shows_rows_with_switches(client, mock_http):
+    from app.integrations import registry
+
+    mock_http(lambda request: httpx.Response(200, json=STATES))
+    config = {"entities": ["sensor.temp", "light.desk", "switch.fan", "scene.movie", "light.gone"]}
+    data = asyncio.run(registry["homeassistant_list"].fetch(config))
+
+    assert data.value == "1 of 2 on"
+    assert [(i.label, i.kind, i.on, i.detail) for i in data.items] == [
+        ("Office", "check", None, "21.5 °C"),
+        ("Desk lamp", "switch", True, None),
+        ("Fan", "switch", False, None),
+        ("Movie night", "button", None, None),
+        ("light.gone", "check", None, "Not found in Home Assistant"),
+    ]
+    assert data.items[0].action is None  # sensors are view-only
+
+
+def test_homeassistant_list_only_flips_its_own_entities(client, mock_http):
+    from app.integrations import registry
+    from app.integrations.base import IntegrationError
+
+    seen = mock_http(lambda request: httpx.Response(200, json=STATES if request.method == "GET" else []))
+    ha_list = registry["homeassistant_list"]
+    config = {"entities": ["switch.fan", "scene.movie"]}
+
+    asyncio.run(ha_list.flip(config, {"entity_id": "switch.fan"}))
+    asyncio.run(ha_list.flip(config, {"entity_id": "scene.movie"}))
+    posts = [r.url.path for r in seen if r.method == "POST"]
+    assert posts == ["/api/services/switch/toggle", "/api/services/scene/turn_on"]
+    with pytest.raises(IntegrationError):
+        asyncio.run(ha_list.flip(config, {"entity_id": "lock.front_door"}))

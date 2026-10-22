@@ -4,7 +4,7 @@ A tile-based homepage for your projects, sites and devices, with Hermes as a bui
 
 ![The board](docs/images/board.png)
 
-- **Tiles for everything:** links to self-hosted apps (with an up/down check), Home Assistant devices you can switch and dim, GitHub repos with CI status and a workflow button, Google Calendar, Google Tasks.
+- **Tiles for everything:** links to self-hosted apps (with an up/down check), Home Assistant devices you can switch and dim (one per tile, or a list of several with on/off switches), GitHub repos with CI status and a workflow button, Google Calendar, Google Tasks.
 - **Edit in the page:** drag tiles between groups, resize them, add and configure them from forms. Undo, YAML export and import, and saved revision history.
 - **Hermes as the assistant:** chat in a side drawer. Hermes gets Launchpad's GitHub and Google tools over MCP, and controls Home Assistant through its own toolset. Anything that changes something waits for you to approve it on the page.
 - **Easy to extend:** an integration is one Python class. Drop it in `config/plugins/` to keep it out of the repo.

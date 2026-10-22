@@ -54,10 +54,8 @@
       query = option.value;
       return onpick?.(option);
     }
-    query = '';
-    if (chosen.includes(option.value)) return;
-    if (!chosen.length) onpick?.(option);
-    value = [...chosen, option.value];
+    query = ''; // no onpick: one of several picks is a poor name for the whole tile
+    if (!chosen.includes(option.value)) value = [...chosen, option.value];
   }
 
   const unpick = (v) => (value = chosen.filter((c) => c !== v));

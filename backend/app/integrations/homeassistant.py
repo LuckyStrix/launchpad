@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from .base import Control, Field, Integration, IntegrationError, Option, TileData, action, http
+from .base import Control, Field, Integration, IntegrationError, Item, Option, TileData, action, http
 
 TOGGLEABLE = {"light", "switch", "fan", "input_boolean", "automation", "siren", "humidifier"}
 RUNNABLE = {"scene": ("turn_on", "Activate"), "script": ("turn_on", "Run"), "button": ("press", "Press"),
@@ -129,7 +129,7 @@ class HomeAssistant(Integration):
         return await self.fetch(config)
 
     async def options(self, field, query):
-        if field != "entity_id":
+        if field not in ("entity_id", "entities"):
             return []
         query = query.lower()
         found = []
@@ -140,4 +140,65 @@ class HomeAssistant(Integration):
         return sorted(found, key=lambda o: o.label.lower())[:50]
 
 
-integration = HomeAssistant()
+class HomeAssistantList(HomeAssistant):
+    """Several entities in one tile: a row each with its state, and an on/off switch for lights and
+    switches (or a Run button for scenes and scripts). For full controls, use one Home Assistant tile."""
+
+    id = "homeassistant_list"
+    name = "Home Assistant list"
+    description = "Several devices and sensors in one tile, with on/off switches."
+    default_size = "2x2"
+    fields = [Field(key="entities", label="Entities", type="multipicker", required=True,
+                    help="Search by name or entity ID. Lights and switches get an on/off switch.")]
+
+    def _chosen(self, config: dict) -> list[str]:
+        chosen = config.get("entities") or []
+        if not chosen:
+            raise IntegrationError("Choose entities in the tile settings.")
+        return [chosen] if isinstance(chosen, str) else chosen
+
+    async def fetch(self, config):
+        chosen = self._chosen(config)
+        states = {s["entity_id"]: s for s in await self._request("GET", "/states") if s["entity_id"] in chosen}
+        items = [self._row(entity_id, states.get(entity_id)) for entity_id in chosen]
+        switches = [i for i in items if i.kind == "switch"]
+        on = sum(1 for i in switches if i.on)
+        public = (self.env("HASS_PUBLIC_URL") or self.env("HASS_URL")).rstrip("/")
+        return TileData(status="ok" if on else "idle", items=items, url=public,
+                        value=f"{on} of {len(switches)} on" if switches else None)
+
+    def _row(self, entity_id: str, state: dict | None) -> Item:
+        if state is None:
+            return Item(label=entity_id, detail="Not found in Home Assistant", status="warn")
+        value, attrs = state["state"], state.get("attributes", {})
+        domain = entity_id.split(".")[0]
+        name = attrs.get("friendly_name") or entity_id
+        unit = attrs.get("unit_of_measurement")
+        status = "warn" if value in ("unavailable", "unknown") else "ok" if value in ACTIVE_STATES else "idle"
+        if domain in TOGGLEABLE:
+            return Item(label=name, status=status, kind="switch", on=value == "on", action="flip",
+                        action_label="Turn off" if value == "on" else "Turn on", params={"entity_id": entity_id})
+        if domain in RUNNABLE:
+            return Item(label=name, kind="button", action="flip", action_label=RUNNABLE[domain][1],
+                        params={"entity_id": entity_id})
+        if domain == "climate":
+            detail = f"{_number(attrs.get('current_temperature'))}°, {value}"
+        else:
+            detail = f"{_number(value)} {unit}" if unit else value.replace("_", " ")
+        return Item(label=name, detail=detail, status=status)
+
+    @action
+    async def flip(self, config, params):
+        """Toggle a switchable row, or run a scene/script row. Only entities on this tile."""
+        entity_id = params.get("entity_id", "")
+        if entity_id not in self._chosen(config):
+            raise IntegrationError("That entity isn't on this tile.")
+        domain = entity_id.split(".")[0]
+        service = "toggle" if domain in TOGGLEABLE else RUNNABLE.get(domain, (None,))[0]
+        if not service:
+            raise IntegrationError("That entity has no on/off or run action.")
+        await self._request("POST", f"/services/{domain}/{service}", json={"entity_id": entity_id})
+        return await self.fetch(config)
+
+
+integrations = [HomeAssistant(), HomeAssistantList()]

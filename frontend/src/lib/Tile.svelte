@@ -154,13 +154,27 @@
                 {#if item.detail}<small>{item.detail}</small>{/if}
               </span>
               {#if item.action && !board.editing}
-                <button
-                  class="check raised"
-                  title={item.action_label}
-                  aria-label="{item.action_label}: {item.label}"
-                  disabled={busy}
-                  onclick={() => run(item.action, item.params)}
-                ></button>
+                {#if item.kind === 'switch'}
+                  <button
+                    class="switch small raised"
+                    role="switch"
+                    aria-checked={!!item.on}
+                    aria-label={item.label}
+                    disabled={busy}
+                    onclick={() => run(item.action, item.params)}
+                  ><span></span></button>
+                {:else if item.kind === 'button'}
+                  <button class="btn row-btn raised" aria-label="{item.action_label}: {item.label}" disabled={busy}
+                          onclick={() => run(item.action, item.params)}>{item.action_label}</button>
+                {:else}
+                  <button
+                    class="check raised"
+                    title={item.action_label}
+                    aria-label="{item.action_label}: {item.label}"
+                    disabled={busy}
+                    onclick={() => run(item.action, item.params)}
+                  ></button>
+                {/if}
               {/if}
             </li>
           {/each}
@@ -394,6 +408,23 @@
   .switch[aria-checked='true'] {
     background: var(--ok);
     border-color: var(--ok);
+  }
+  .switch.small {
+    flex: none;
+    width: 2.1rem;
+    height: 1.2rem;
+  }
+  .switch.small span {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+  .switch.small[aria-checked='true'] span {
+    transform: translateX(0.9rem);
+  }
+  .row-btn {
+    flex: none;
+    padding: 0.2em 0.6em;
+    font-size: 0.75rem;
   }
   .switch[aria-checked='true'] span {
     transform: translateX(1.1rem);

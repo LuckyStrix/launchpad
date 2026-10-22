@@ -28,7 +28,9 @@ class IntegrationError(Exception):
 
 
 class Item(BaseModel):
-    """A row in a tile's list. With `action` set, the row gets a button that calls it."""
+    """A row in a tile's list. With `action` set, the row gets a control that calls it: a round
+    check button (`kind="check"`, e.g. complete a task), an on/off switch showing `on`
+    (`kind="switch"`), or a small button labelled `action_label` (`kind="button"`)."""
 
     label: str
     detail: str | None = None
@@ -37,6 +39,8 @@ class Item(BaseModel):
     action: str | None = None
     action_label: str | None = None
     params: dict[str, Any] = {}
+    kind: Literal["check", "switch", "button"] = "check"
+    on: bool | None = None
 
 
 class Control(BaseModel):
