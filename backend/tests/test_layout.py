@@ -48,3 +48,12 @@ def test_tile_sizes_are_free_form_within_limits(client):
         tile["size"] = size
         response = client.put("/api/layout", json={"layout": doc["layout"]})
         assert (response.status_code == 200) is ok, size
+
+
+def test_headline_can_be_hidden_per_tile(client):
+    doc = client.get("/api/layout").json()
+    tile = doc["layout"]["groups"][0]["tiles"][0]
+    assert tile["show_value"] is True  # on unless turned off
+    tile["show_value"] = False
+    client.put("/api/layout", json={"layout": doc["layout"]})
+    assert client.get("/api/layout").json()["layout"]["groups"][0]["tiles"][0]["show_value"] is False

@@ -26,6 +26,7 @@ class Tile(BaseModel):
     title: str = ""
     icon: str = ""  # emoji, image URL, "si:<simple-icons slug>", or blank for the default
     size: str = Field("1x1", pattern=r"^[1-6]x[1-6]$")  # width x height in grid cells
+    show_value: bool = True  # the big readout, like "10 events"; off leaves more room for the list
     config: dict[str, Any] = {}
 
 

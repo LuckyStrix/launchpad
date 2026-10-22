@@ -183,7 +183,7 @@
     {:else if note}
       <p class="message">{note}</p>
     {:else if data}
-      {#if data.value}<p class="value">{data.value}</p>{/if}
+      {#if data.value && tile.show_value !== false}<p class="value">{data.value}</p>{/if}
       {#if data.detail}<p class="detail">{data.detail}</p>{/if}
       {#if grid && items.length}
         <ul class="cards">
@@ -392,9 +392,10 @@
   .message {
     flex: none; /* keep full height; only the list below shrinks and scrolls */
     margin: 0;
+    padding-bottom: 0.1em; /* room for descenders (g, y) when scaling rounds the height down */
     color: var(--muted);
     font-size: var(--step--1);
-    line-height: 1.35;
+    line-height: 1.45; /* roomy enough that descenders never sit on the clip edge, whatever the font metrics */
     overflow-wrap: anywhere;
     display: -webkit-box;
     -webkit-line-clamp: 2;

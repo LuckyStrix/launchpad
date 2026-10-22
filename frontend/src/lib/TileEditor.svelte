@@ -109,6 +109,12 @@
         <small>An emoji, an image URL, or si:name for a Simple Icons logo (like si:github).</small>
       </label>
 
+      <FieldInput
+        field={{ key: 'show_value', label: 'Show the headline (like “10 events” or “On”)', type: 'bool', default: true }}
+        integrationId="tile"
+        bind:value={draft.show_value}
+      />
+
       <fieldset class="field">
         <legend>Size</legend>
         <div class="sizes">
