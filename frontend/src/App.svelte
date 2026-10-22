@@ -62,7 +62,10 @@
         api.tileChanges().catch(() => null),
       ]);
       approvals = waiting;
-      if (changes && JSON.stringify(changes) !== JSON.stringify(board.changes)) board.changes = changes;
+      // Key by key, so only tiles whose source changed refetch (replacing the object would wake every tile).
+      for (const [source, count] of Object.entries(changes ?? {})) {
+        if (board.changes[source] !== count) board.changes[source] = count;
+      }
     } finally {
       polling = false;
     }
@@ -110,13 +113,19 @@
   }
 
   async function exportLayout() {
-    const yaml = await api.exportLayout();
+    let yaml;
+    try {
+      yaml = await api.exportLayout();
+    } catch (e) {
+      notice = `Couldn't export the layout: ${e.message}`;
+      return;
+    }
     const link = Object.assign(document.createElement('a'), {
       href: URL.createObjectURL(new Blob([yaml], { type: 'application/yaml' })),
       download: 'layout.yaml',
     });
     link.click();
-    URL.revokeObjectURL(link.href);
+    setTimeout(() => URL.revokeObjectURL(link.href), 10_000); // some browsers start the download later
   }
 
   async function importLayout(event) {
@@ -205,7 +214,7 @@
         <button
           class="btn primary"
           onclick={() => {
-            startEditing();
+            if (!board.editing) startEditing(); // restarting would forget the board to discard back to
             addGroup();
           }}>Start a group</button
         >

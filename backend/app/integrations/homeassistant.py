@@ -13,6 +13,11 @@ RUNNABLE = {"scene": ("turn_on", "Activate"), "script": ("turn_on", "Run"), "but
             "input_button": ("press", "Press")}
 ACTIVE_STATES = {"on", "open", "opening", "home", "playing", "heat", "cool", "heat_cool", "auto"}
 SERVICE_NAME = re.compile(r"^[a-z_]+$")
+# What a tile's controls may send, and nothing else: a button press can't add targets such as
+# area_id or device_id (which would reach other devices) or call unrelated services.
+ALLOWED_SERVICES = {"turn_on", "turn_off", "toggle", "press", "open_cover", "close_cover", "lock", "unlock",
+                    "media_play_pause", "set_temperature"}
+ALLOWED_FIELDS = {"brightness_pct", "temperature"}
 DOMAIN_ICONS = {"light": "💡", "switch": "🔌", "fan": "🌀", "climate": "🌡️", "cover": "🪟", "lock": "🔒",
                 "media_player": "🔈", "scene": "🎬", "script": "📜", "automation": "⚙️", "button": "🔘",
                 "input_button": "🔘", "input_boolean": "🔘", "binary_sensor": "◉", "person": "👤",
@@ -121,12 +126,14 @@ class HomeAssistant(Integration):
         service = params.get("service")
         if service is None and isinstance(params.get("value"), bool):
             service = "turn_on" if params["value"] else "turn_off"
-        if not service or not SERVICE_NAME.match(service):
+        if not service or not SERVICE_NAME.match(service) or service not in ALLOWED_SERVICES:
             raise IntegrationError("That control is missing a valid service.")
 
         data = dict(params.get("data") or {})
         if params.get("field") and "value" in params:
             data[params["field"]] = params["value"]
+        if set(data) - ALLOWED_FIELDS or not all(isinstance(v, int | float) for v in data.values()):
+            raise IntegrationError("That control sent settings this tile doesn't use.")
         changed = await self._request("POST", f"/services/{domain}/{service}",
                                       json={**data, "entity_id": entity_id})
         for state in changed or []:

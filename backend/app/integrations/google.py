@@ -78,21 +78,36 @@ async def _token_request(data: dict[str, str]) -> dict:
     return response.json()
 
 
+_refresh_lock: tuple[asyncio.AbstractEventLoop, asyncio.Lock] | None = None
+
+
+def _refreshing() -> asyncio.Lock:
+    """One lock per event loop (a lock made at import can't be shared across loops, e.g. in tests)."""
+    global _refresh_lock
+    loop = asyncio.get_running_loop()
+    if _refresh_lock is None or _refresh_lock[0] is not loop:
+        _refresh_lock = (loop, asyncio.Lock())
+    return _refresh_lock[1]
+
+
 async def _access_token() -> str:
-    if _access["token"] and _access["expires"] > time.time() + 60:
+    async with _refreshing():  # tiles loading together share one refresh
+        if _access["token"] and _access["expires"] > time.time() + 60:
+            return _access["token"]
+        refresh = db.kv_get(TOKEN_KEY)
+        if not refresh:
+            raise NotConnected("Connect your Google account.")
+        try:
+            grant = await _token_request({"grant_type": "refresh_token", "refresh_token": refresh})
+        except IntegrationError as e:
+            if "invalid_grant" in str(e):
+                db.kv_delete(TOKEN_KEY)
+                raise NotConnected("Google signed Launchpad out. Connect your account again.")
+            raise
+        if db.kv_get(TOKEN_KEY) != refresh:  # disconnected (or reconnected) while this was in flight
+            raise NotConnected("Connect your Google account.")
+        _access.update(token=grant["access_token"], expires=time.time() + grant.get("expires_in", 3600))
         return _access["token"]
-    refresh = db.kv_get(TOKEN_KEY)
-    if not refresh:
-        raise NotConnected("Connect your Google account.")
-    try:
-        grant = await _token_request({"grant_type": "refresh_token", "refresh_token": refresh})
-    except IntegrationError as e:
-        if "invalid_grant" in str(e):
-            db.kv_delete(TOKEN_KEY)
-            raise NotConnected("Google signed Launchpad out. Connect your account again.")
-        raise
-    _access.update(token=grant["access_token"], expires=time.time() + grant.get("expires_in", 3600))
-    return _access["token"]
 
 
 async def gapi(method: str, url: str, **kwargs: Any) -> Any:
@@ -239,8 +254,9 @@ class GoogleCalendar(Integration):
     async def options(self, field, query):
         data = await gapi("GET", f"{CALENDAR_API}/users/me/calendarList")
         # The main calendar is offered as "primary", the id saved tiles use by default.
-        return [Option(value="primary" if c.get("primary") else c["id"], label=c.get("summaryOverride") or c["summary"])
-                for c in data.get("items", []) if query.lower() in c["summary"].lower()]
+        options = [Option(value="primary" if c.get("primary") else c["id"],
+                          label=c.get("summaryOverride") or c.get("summary") or c["id"]) for c in data.get("items", [])]
+        return [o for o in options if query.lower() in o.label.lower()]
 
     @tool()
     async def events(self, days: int = 1, calendar: str = "primary") -> list[dict]:

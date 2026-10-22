@@ -41,7 +41,7 @@ class GitHub(Integration):
         Field(key="ref", label="Branch for the workflow", placeholder="Default branch"),
     ]
 
-    async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+    async def _request(self, method: str, path: str, raw: bool = False, **kwargs: Any) -> Any:
         headers = {"Authorization": f"Bearer {self.env('GITHUB_TOKEN')}", "Accept": "application/vnd.github+json",
                    "X-GitHub-Api-Version": "2022-11-28"}
         try:
@@ -57,7 +57,18 @@ class GitHub(Integration):
             raise IntegrationError(f"GitHub can't find {path}, or GITHUB_TOKEN can't access it.")
         if response.is_error:
             raise IntegrationError(f"GitHub returned HTTP {response.status_code}: {response.text[:200]}")
+        if raw:
+            return response
         return response.json() if response.content else None
+
+    async def _open_pr_count(self, repo: str, first_page: list[dict]) -> int:
+        """Exact count of open PRs. Past one page of 100, read the last page number from the Link header."""
+        if len(first_page) < 100:
+            return len(first_page)
+        response = await self._request("GET", f"/repos/{repo}/pulls", raw=True,
+                                       params={"state": "open", "per_page": 1})
+        last = re.search(r'[?&]page=(\d+)>; rel="last"', response.headers.get("link", ""))
+        return int(last.group(1)) if last else len(first_page)
 
     async def _overview(self, repo: str) -> tuple[dict, list[dict], list[dict]]:
         info, runs, pulls = await asyncio.gather(
@@ -71,13 +82,14 @@ class GitHub(Integration):
         repo = _check_repo(config.get("repo"))
         info, runs, pulls = await self._overview(repo)
         status, readout = _run_status(runs[0]) if runs else ("idle", "No CI runs")
-        issues = info["open_issues_count"] - len(pulls)  # GitHub counts PRs as issues
+        pr_count = await self._open_pr_count(repo, pulls)
+        issues = info["open_issues_count"] - pr_count  # GitHub counts PRs as issues
         items = [Item(label=run.get("display_title") or run["name"], detail=f"{run['name']} on {run['head_branch']}",
                       status=_run_status(run)[0], url=run["html_url"]) for run in runs]
         controls = []
         if config.get("workflow"):
             controls.append(Control(action="dispatch", label=f"Run {config['workflow']}"))
-        return TileData(status=status, value=readout, detail=f"{len(pulls)} open PRs, {issues} issues",
+        return TileData(status=status, value=readout, detail=f"{pr_count} open PRs, {issues} issues",
                         items=items, controls=controls, url=info["html_url"])
 
     async def _dispatch(self, repo: str, workflow: str, ref: str) -> str:

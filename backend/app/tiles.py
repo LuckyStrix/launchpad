@@ -97,7 +97,8 @@ async def tile_action(tile_id: str, name: str, params: dict[str, Any] = Body(def
     if not handler:
         raise HTTPException(404, f"{integration.name} tiles have no {name!r} action.")
     result = await _guard(integration, lambda: handler(tile.config, params))
-    base.changed(integration.source)  # other tiles showing the same data refresh too
+    if not result.error:
+        base.changed(integration.source)  # other tiles showing the same data refresh too
     return result
 
 

@@ -83,3 +83,29 @@ def test_calendar_merges_several_calendars_by_start_time(client, mock_http, monk
 
     single = asyncio.run(calendar.fetch({"calendar": "primary"}))  # tiles saved before multi-select
     assert [i.label for i in single.items] == ["Dentist", "Trip"] and "," not in single.items[0].detail
+
+
+def test_calendar_picker_searches_shown_names(client, mock_http, monkeypatch):
+    _connected(monkeypatch)
+    mock_http(lambda request: httpx.Response(200, json={"items": [
+        {"id": "a@x", "summary": "Shared 2019", "summaryOverride": "Family"},
+        {"id": "b@x"},  # no name at all
+        {"id": "me@x", "summary": "Me", "primary": True}]}))
+    options = asyncio.run(registry["google_calendar"].options("calendar", "fam"))
+    assert [(o.value, o.label) for o in options] == [("a@x", "Family")]
+    every = asyncio.run(registry["google_calendar"].options("calendar", ""))
+    assert [o.value for o in every] == ["a@x", "b@x", "primary"]
+
+
+def test_refresh_finishing_after_disconnect_is_dropped(client, mock_http, monkeypatch):
+    monkeypatch.setattr(google, "_access", {"token": None, "expires": 0.0})
+    db.kv_set(google.TOKEN_KEY, "refresh-1")
+
+    def reply(request):
+        db.kv_delete(google.TOKEN_KEY)  # the user disconnects while the refresh is in flight
+        return httpx.Response(200, json={"access_token": "new", "expires_in": 3600})
+
+    mock_http(reply)
+    with pytest.raises(google.NotConnected):
+        asyncio.run(google._access_token())
+    assert google._access["token"] is None

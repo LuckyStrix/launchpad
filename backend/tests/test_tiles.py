@@ -175,3 +175,40 @@ def test_slow_tile_data_hits_the_deadline(client, monkeypatch):
     monkeypatch.setattr(registry["link"], "fetch", slow)
     data = client.get("/api/tiles/site/data").json()
     assert data["status"] == "error" and "took more than" in data["error"]
+
+
+def test_homeassistant_buttons_cant_add_targets_or_services(client, mock_http):
+    seen = mock_http(lambda request: httpx.Response(200, json=[]))
+    for params in ({"service": "turn_on", "data": {"area_id": "house"}},  # would reach every device in the area
+                   {"service": "turn_on", "field": "entity_id", "value": "light.other"},
+                   {"service": "reload"}):
+        data = client.post("/api/tiles/lamp/actions/call", json=params).json()
+        assert data["status"] == "error", params
+    assert seen == []
+
+    client.post("/api/tiles/lamp/actions/call", json={"service": "turn_on", "field": "brightness_pct", "value": 40})
+    assert json.loads(seen[0].content) == {"brightness_pct": 40, "entity_id": "light.lamp"}
+
+
+def test_failed_action_is_not_announced_as_a_change(client, mock_http):
+    mock_http(lambda request: httpx.Response(200, json=[]))
+    before = client.get("/api/tiles/changes").json().get("homeassistant", 0)
+    client.post("/api/tiles/lamp/actions/call", json={"service": "reload"})
+    assert client.get("/api/tiles/changes").json().get("homeassistant", 0) == before
+
+
+def test_github_counts_more_than_100_open_prs(client, mock_http):
+    def reply(request):
+        path = request.url.path
+        if path.endswith("/pulls") and request.url.params.get("per_page") == "1":
+            return httpx.Response(200, json=[{}], headers={
+                "link": '<https://api.github.com/repositories/1/pulls?per_page=1&page=2>; rel="next", '
+                        '<https://api.github.com/repositories/1/pulls?per_page=1&page=250>; rel="last"'})
+        if path.endswith("/pulls"):
+            return httpx.Response(200, json=[{"number": n} for n in range(100)])
+        if path.endswith("/runs"):
+            return httpx.Response(200, json={"workflow_runs": []})
+        return httpx.Response(200, json={"open_issues_count": 260, "html_url": "https://github.com/me/proj"})
+
+    mock_http(reply)
+    assert client.get("/api/tiles/repo/data").json()["detail"] == "250 open PRs, 10 issues"

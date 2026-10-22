@@ -28,8 +28,9 @@
   const choices = $derived(
     Object.values(board.integrations).sort((a, b) => (a.id === 'link' ? -1 : a.name.localeCompare(b.name))),
   );
+  const empty = (v) => v == null || v === '' || (Array.isArray(v) && !v.length); // [] = a multi-select with no picks
   const missing = $derived(
-    (schema?.fields ?? []).filter((f) => f.required && (draft.config[f.key] ?? '') === '').map((f) => f.label),
+    (schema?.fields ?? []).filter((f) => f.required && empty(draft.config[f.key])).map((f) => f.label),
   );
 
   $effect(() => {
