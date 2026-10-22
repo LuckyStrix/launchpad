@@ -62,9 +62,14 @@
     board.changes[schema?.source ?? tile.integration]; // its data changed (a tile button, Hermes, sign-in)
     refresh();
     const timer = setInterval(() => document.hidden || refresh(), (schema?.refresh ?? 60) * 1000);
-    const back = () => document.hidden || refresh(); // coming back to the tab
+    const back = () => document.hidden || refresh(); // back to the tab, or back online
     document.addEventListener('visibilitychange', back);
-    return () => (clearInterval(timer), document.removeEventListener('visibilitychange', back));
+    window.addEventListener('online', back);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', back);
+      window.removeEventListener('online', back);
+    };
   });
 
   async function run(action, params = {}) {

@@ -51,14 +51,21 @@
   });
 
   // Every few seconds: approvals waiting for the user, and which services changed (tiles refetch).
+  // Skips a round while the last one is still waiting, so requests can't pile up on a bad connection.
+  let polling = false;
   async function pollApprovals() {
-    if (document.hidden) return;
-    const [waiting, changes] = await Promise.all([
-      api.approvals().catch(() => approvals),
-      api.tileChanges().catch(() => null),
-    ]);
-    approvals = waiting;
-    if (changes && JSON.stringify(changes) !== JSON.stringify(board.changes)) board.changes = changes;
+    if (document.hidden || polling) return;
+    polling = true;
+    try {
+      const [waiting, changes] = await Promise.all([
+        api.approvals().catch(() => approvals),
+        api.tileChanges().catch(() => null),
+      ]);
+      approvals = waiting;
+      if (changes && JSON.stringify(changes) !== JSON.stringify(board.changes)) board.changes = changes;
+    } finally {
+      polling = false;
+    }
   }
 
   async function decide(id, approve) {
