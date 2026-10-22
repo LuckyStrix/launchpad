@@ -72,7 +72,12 @@ async def tile_data(tile_id: str) -> TileData:
     if cached and cached[1] == key and time.monotonic() - cached[0] < ttl:
         return cached[2]
     data = await _guard(integration, lambda: integration.fetch(tile.config))
-    _cache[tile_id] = (time.monotonic(), key, data)
+    # Only cache healthy results: after fixing a problem (signing in, setting a token, bringing
+    # a service back) the tile should recover on the next refresh, not after the cache expires.
+    if data.status in ("ok", "idle") and not data.error:
+        _cache[tile_id] = (time.monotonic(), key, data)
+    else:
+        _cache.pop(tile_id, None)
     return data
 
 

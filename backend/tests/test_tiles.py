@@ -84,3 +84,11 @@ def test_integration_schemas(client):
     assert {"link", "homeassistant", "github", "google_calendar", "google_tasks", "hermes"} <= set(schemas)
     assert schemas["homeassistant"]["fields"][0]["type"] == "picker"
     assert "create_issue" in schemas["github"]["tools"]
+
+
+def test_problem_tiles_are_not_cached(client, mock_http):
+    mock_http(lambda request: httpx.Response(500))
+    assert client.get("/api/tiles/site/data").json()["status"] == "error"
+
+    mock_http(lambda request: httpx.Response(200))
+    assert client.get("/api/tiles/site/data").json()["status"] == "ok"  # recovers at once
