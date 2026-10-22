@@ -15,11 +15,30 @@
   let failed = $state(false); // the last data fetch failed (not just "not saved yet")
   let busy = $state(false);
 
+  // Several things refresh a tile (its timer, change polling, returning to the tab, its own
+  // buttons), so requests overlap. Only the newest one's reply is used: an older one finishing
+  // late, often a request cut off by sleep or a network blip, must not overwrite fresh data.
+  let latest = 0;
+  let misses = 0; // dropped connections in a row
+  let alive = true;
+  $effect(() => () => (alive = false));
+
   async function refresh() {
+    const mine = ++latest;
     try {
-      data = await api.tileData(tile.id);
+      const fresh = await api.tileData(tile.id);
+      if (mine !== latest) return;
+      data = fresh;
+      misses = 0;
       ok();
     } catch (e) {
+      if (mine !== latest) return;
+      // A dropped connection (status 0) is usually momentary: keep the last data and retry a few
+      // times before calling it an error.
+      if (e.status === 0 && ++misses <= 3) {
+        setTimeout(() => alive && mine === latest && refresh(), 2000 * misses);
+        return;
+      }
       data = null;
       fail(e);
     }
@@ -50,8 +69,10 @@
 
   async function run(action, params = {}) {
     busy = true;
+    const mine = ++latest; // a refresh already in flight would bring back the old state
     try {
-      data = await api.action(tile.id, action, params);
+      const fresh = await api.action(tile.id, action, params);
+      if (mine === latest) data = fresh;
       ok();
     } catch (e) {
       fail(e);
