@@ -5,8 +5,13 @@
     event: delta    data: {"text": ...}
     event: error    data: {"message": ...}
     event: done     data: {}
+
+When Hermes needs the user's go-ahead for one of its own tools (a terminal command, reading a
+sensitive file), its stream carries an `approval.request` event. Launchpad shows it as an approval
+card, like its own write tools, and sends the answer to Hermes's POST /v1/runs/{id}/approval.
 """
 
+import asyncio
 import json
 import logging
 import uuid
@@ -17,7 +22,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from . import db, layout
+from . import approvals, db, layout
 from .config import settings
 from .integrations import base
 
@@ -64,20 +69,43 @@ def _error_message(e: Exception) -> str:
     return f"The connection to Hermes failed ({e.__class__.__name__})."
 
 
-async def _stream_from_hermes(messages: list[dict]) -> AsyncIterator[str]:
+def _hermes_headers() -> dict[str, str]:
+    key = settings().hermes_api_key
+    return {"Authorization": f"Bearer {key}"} if key else {}
+
+
+async def _stream_from_hermes(messages: list[dict]) -> AsyncIterator[str | dict]:
+    """Yields reply text, and a dict for each approval request Hermes raises."""
     s = settings()
-    headers = {"Authorization": f"Bearer {s.hermes_api_key}"} if s.hermes_api_key else {}
     body = {"model": s.hermes_model, "messages": messages, "stream": True}
-    # No read timeout: Hermes may run tools for minutes between tokens.
+    # No read timeout: Hermes may run tools for minutes between tokens, or wait on an approval.
     async with base.http(timeout=httpx.Timeout(10, read=None)) as client:
-        async with client.stream("POST", f"{s.hermes_url}/chat/completions", json=body, headers=headers) as resp:
+        async with client.stream("POST", f"{s.hermes_url}/chat/completions", json=body,
+                                 headers=_hermes_headers()) as resp:
             if resp.is_error:
                 await resp.aread()
                 resp.raise_for_status()
+            event = None  # the current SSE frame's `event:` name; unnamed frames are reply chunks
             async for line in resp.aiter_lines():
+                if not line:
+                    event = None
+                    continue
+                if line.startswith("event:"):
+                    event = line[6:].strip()
+                    continue
                 if not line.startswith("data:"):
                     continue
                 payload = line[5:].strip()
+                if event == "approval.request":
+                    try:
+                        request = json.loads(payload)
+                    except ValueError:
+                        continue
+                    if isinstance(request, dict) and request.get("run_id"):
+                        yield request
+                    continue
+                if event:  # Hermes's other custom events (tool progress, status)
+                    continue
                 if payload == "[DONE]":
                     return
                 # Skip anything that isn't a standard chunk; Hermes interleaves other shapes into the stream.
@@ -88,6 +116,26 @@ async def _stream_from_hermes(messages: list[dict]) -> AsyncIterator[str]:
                 text = delta.get("content") if isinstance(delta, dict) else None
                 if isinstance(text, str) and text:
                     yield text
+
+
+async def _relay_approval(request: dict) -> None:
+    """Ask the user about one of Hermes's approval requests, then give Hermes the answer."""
+    description = str(request.get("description") or "an action that needs your approval")
+    args = {"command": request.get("command")}
+    approved = await approvals.request("hermes", args, title=f"Hermes asks to {description}")
+    answer = {"choice": "once" if approved else "deny"}
+    if request.get("request_id"):
+        answer["request_id"] = request["request_id"]
+    url = f"{settings().hermes_url}/runs/{request['run_id']}/approval"
+    try:
+        async with base.http() as client:
+            response = await client.post(url, json=answer, headers=_hermes_headers())
+    except httpx.HTTPError as e:
+        log.warning("Couldn't send the approval answer to Hermes: %s", e)
+        return
+    # 409: the request is gone already (Hermes timed out, or the turn ended).
+    if response.is_error and response.status_code != 409:
+        log.warning("Hermes refused the approval answer: HTTP %s %s", response.status_code, response.text[:200])
 
 
 class ChatRequest(BaseModel):
@@ -110,16 +158,23 @@ async def chat(body: ChatRequest):
     async def events() -> AsyncIterator[str]:
         yield _sse("session", {"id": session_id})
         reply = []
+        asking: set[asyncio.Task] = set()  # approval cards for this turn
         try:
-            async for text in _stream_from_hermes(messages):
-                reply.append(text)
-                yield _sse("delta", {"text": text})
+            async for item in _stream_from_hermes(messages):
+                if isinstance(item, dict):
+                    asking.add(asyncio.create_task(_relay_approval(item)))
+                    continue
+                reply.append(item)
+                yield _sse("delta", {"text": item})
         except httpx.HTTPError as e:
             yield _sse("error", {"message": _error_message(e)})
         except Exception as e:
             log.exception("Chat stream failed")
             yield _sse("error", {"message": f"Hermes's reply broke off ({type(e).__name__}). Try again."})
         finally:
+            # The turn is over, so Hermes has stopped waiting: withdraw any unanswered cards.
+            for task in asking:
+                task.cancel()
             if reply:
                 # The session may have been deleted while Hermes was replying; then there's nothing to save.
                 db.execute("INSERT INTO chat_messages (session_id, role, content) SELECT ?, 'assistant', ? "

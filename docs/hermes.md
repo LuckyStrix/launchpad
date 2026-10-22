@@ -70,6 +70,12 @@ Not yet verified against a live Hermes:
 - the exact MCP config syntax
 - whether Hermes keeps its own session state across `/v1/chat/completions` calls (Launchpad sends the full history every time, so it works either way)
 
+## Hermes's own approvals
+
+Hermes asks before some of its own actions, such as risky terminal commands or reading credential files. When that happens during a chat in Launchpad's drawer, the request shows up as an approval card there, like the ones for Launchpad's tools. **Approve** lets that one action run (Hermes's `once`), and **Deny** blocks it. Choices to approve for the whole session, or always, stay in Hermes's own clients.
+
+This needs a Hermes whose API server sends `approval.request` events in streamed chat completions. Older versions don't, and their approvals can't be answered from Launchpad. Requests Hermes raises outside the drawer (Telegram, scheduled jobs) stay there too. A card is withdrawn when Hermes's turn ends, and an unanswered card is denied after `APPROVAL_TIMEOUT`. Hermes has its own limit, `approvals.timeout` (300 seconds by default), so keep the two similar.
+
 ## 5. Home Assistant in Hermes
 
 Launchpad's Home Assistant tiles talk to HA directly. For chat control ("turn off the lights"), enable Hermes's `hermes-homeassistant` toolset with `HASS_TOKEN`, plus its HA URL setting, in Hermes's environment.
@@ -81,4 +87,4 @@ Launchpad's Home Assistant tiles talk to HA directly. For chat control ("turn of
 | "Hermes isn't reachable at …" | Hermes is on `launchpad-hermes` with alias `hermes`, and `API_SERVER_HOST=0.0.0.0` |
 | "Hermes rejected the API key" | `HERMES_API_KEY` equals `API_SERVER_KEY` |
 | Hermes can't list Launchpad tools | The bearer token, and that the URL ends in `/mcp`. Unconfigured integrations offer no tools. |
-| Approvals never appear | Launchpad's page must be open. Requests expire after `APPROVAL_TIMEOUT` seconds. |
+| Approvals never appear | Launchpad's page must be open. Requests expire after `APPROVAL_TIMEOUT` seconds. For Hermes's own approvals, see [Hermes's own approvals](#hermess-own-approvals). |

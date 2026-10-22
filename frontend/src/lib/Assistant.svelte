@@ -156,7 +156,7 @@
     <section class="approvals" aria-label="Waiting for your approval">
       {#each approvals as request (request.id)}
         <div class="approval">
-          <p><strong>Hermes wants to run {request.tool.replaceAll('_', ' ')}</strong></p>
+          <p><strong>{request.title ?? `Hermes wants to run ${request.tool.replaceAll('_', ' ')}`}</strong></p>
           <dl>
             {#each describe(request.args) as [key, value] (key)}
               <dt>{key}</dt>

@@ -54,6 +54,56 @@ def test_chat_explains_unreachable_hermes(client, mock_http):
     assert "isn't reachable" in events[1][1]["message"]
 
 
+def _approval_frame(**extra):
+    request = {"event": "approval.request", "run_id": "chatcmpl-1", "command": "cat ~/.hermes/google_token.json",
+               "description": "read a credentials file", "choices": ["once", "session", "deny"], **extra}
+    return f"event: approval.request\ndata: {json.dumps(request)}\n\n"
+
+
+def _chunk(text):
+    return f"data: {json.dumps({'choices': [{'delta': {'content': text}}]})}\n\n"
+
+
+def test_hermes_approval_becomes_a_card_and_the_answer_goes_back(client, mock_http):
+    answered = asyncio.Event()
+    cards = []
+
+    async def stream():
+        yield _approval_frame(request_id="req-7").encode()
+        while not (pending := await approvals.list_pending()):
+            await asyncio.sleep(0.01)
+        cards.extend(pending)
+        await approvals.decide(pending[0]["id"], approvals.Decision(approve=True))
+        await asyncio.wait_for(answered.wait(), 5)  # Hermes waits for the answer before going on
+        yield (_chunk("Sent.") + "data: [DONE]\n\n").encode()
+
+    def hermes(request):
+        if request.url.path == "/v1/runs/chatcmpl-1/approval":
+            answered.set()
+            return httpx.Response(200, json={"resolved": 1})
+        return httpx.Response(200, content=stream(), headers={"content-type": "text/event-stream"})
+
+    seen = mock_http(hermes)
+    events = _events(client.post("/api/assistant/chat", json={"message": "email me"}).text)
+
+    assert events[1:] == [("delta", {"text": "Sent."}), ("done", {})]
+    assert cards[0]["title"] == "Hermes asks to read a credentials file"
+    assert cards[0]["args"] == {"command": "cat ~/.hermes/google_token.json"}
+    answer = next(r for r in seen if r.url.path.endswith("/approval"))
+    assert answer.headers["authorization"] == "Bearer hermes-key"
+    assert json.loads(answer.content) == {"choice": "once", "request_id": "req-7"}
+
+
+def test_hermes_approval_card_is_withdrawn_when_the_turn_ends(client, mock_http):
+    body = _approval_frame() + _chunk("Never mind.") + "data: [DONE]\n\n"
+    mock_http(lambda request: httpx.Response(200, text=body, headers={"content-type": "text/event-stream"}))
+
+    events = _events(client.post("/api/assistant/chat", json={"message": "hi"}).text)
+    assert events[1:] == [("delta", {"text": "Never mind."}), ("done", {})]
+    assert client.get("/api/approvals").json() == []
+    assert client.get("/api/activity").json()[0]["status"] == "cancelled"
+
+
 def test_approval_gate(client):
     async def scenario():
         waiting = asyncio.create_task(approvals.request("github_create_issue", {"title": "x"}, timeout=5))
