@@ -461,7 +461,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(5.6rem, 100%), 1fr));
     min-width: 0;
-    grid-auto-rows: 5.5rem;
+    grid-auto-rows: minmax(4rem, 5.5rem); /* full size when there's room; shrink to fit a short tile */
     gap: 0.4rem;
     margin: 0.2rem 0 0;
     padding: 0;
