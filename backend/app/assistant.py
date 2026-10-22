@@ -80,12 +80,13 @@ async def _stream_from_hermes(messages: list[dict]) -> AsyncIterator[str]:
                 payload = line[5:].strip()
                 if payload == "[DONE]":
                     return
+                # Skip anything that isn't a standard chunk; Hermes interleaves other shapes into the stream.
                 try:
-                    choice = json.loads(payload)["choices"][0]
-                except (ValueError, KeyError, IndexError):
+                    delta = json.loads(payload)["choices"][0]["delta"]
+                except (ValueError, KeyError, IndexError, TypeError):
                     continue
-                text = (choice.get("delta") or {}).get("content")
-                if text:
+                text = delta.get("content") if isinstance(delta, dict) else None
+                if isinstance(text, str) and text:
                     yield text
 
 

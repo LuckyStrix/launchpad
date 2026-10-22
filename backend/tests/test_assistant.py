@@ -34,6 +34,16 @@ def test_chat_streams_and_stores_reply(client, mock_http):
     assert [(m["role"], m["content"]) for m in stored] == [("user", "hi"), ("assistant", "Hello")]
 
 
+def test_chat_skips_chunks_that_are_not_standard(client, mock_http):
+    chunks = [{"choices": ["tool progress"]}, {"choices": [{"delta": "x"}]}, {"choices": "x"}, ["x"],
+              {"choices": [{"delta": {"content": 5}}]}, {"choices": [{"delta": {"content": "ok"}}]}]
+    body = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
+    mock_http(lambda request: httpx.Response(200, text=body, headers={"content-type": "text/event-stream"}))
+
+    events = _events(client.post("/api/assistant/chat", json={"message": "hi"}).text)
+    assert events[1:] == [("delta", {"text": "ok"}), ("done", {})]
+
+
 def test_chat_explains_unreachable_hermes(client, mock_http):
     def refuse(request):
         raise httpx.ConnectError("refused")
