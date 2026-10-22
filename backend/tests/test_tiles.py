@@ -140,3 +140,26 @@ def test_homeassistant_list_only_flips_its_own_entities(client, mock_http):
     assert posts == ["/api/services/switch/toggle", "/api/services/scene/turn_on"]
     with pytest.raises(IntegrationError):
         asyncio.run(ha_list.flip(config, {"entity_id": "lock.front_door"}))
+
+
+def test_changes_skip_the_cache_and_are_reported(client, mock_http):
+    seen = mock_http(lambda request: httpx.Response(200, json=[
+        {"entity_id": "light.lamp", "state": "on", "attributes": {}}] if request.method == "POST" else
+        {"entity_id": "light.lamp", "state": "on", "attributes": {}}))
+    client.get("/api/tiles/lamp/data")
+    client.get("/api/tiles/lamp/data")
+    assert len(seen) == 1  # second read came from the cache
+
+    before = client.get("/api/tiles/changes").json().get("homeassistant", 0)
+    client.post("/api/tiles/lamp/actions/call", json={"value": True})
+    assert client.get("/api/tiles/changes").json()["homeassistant"] == before + 1
+
+    client.get("/api/tiles/lamp/data")
+    assert [r.method for r in seen] == ["GET", "POST", "GET"]  # the change dropped the cached data
+
+
+def test_home_assistant_tiles_share_one_source():
+    from app.integrations import registry
+
+    assert registry["homeassistant"].source == registry["homeassistant_list"].source == "homeassistant"
+    assert registry["google_calendar"].source == "google_calendar"

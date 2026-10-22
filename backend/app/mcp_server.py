@@ -14,7 +14,7 @@ from starlette.routing import BaseRoute
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import approvals, db
-from .integrations.base import Integration, IntegrationError
+from .integrations.base import Integration, IntegrationError, changed
 
 INSTRUCTIONS = (
     "Tools for the user's Launchpad homepage: their GitHub repos, Google Calendar and Google Tasks. "
@@ -43,6 +43,8 @@ def _wrap(integration: Integration, fn: Callable, name: str) -> Callable:
             db.set_activity_status(activity_id, "error", f"{args}\n{type(e).__name__}: {e}")
             raise
         db.set_activity_status(activity_id, "done")
+        if write:
+            changed(integration.source)  # the user's tiles for this service refresh within seconds
         return result
 
     return run

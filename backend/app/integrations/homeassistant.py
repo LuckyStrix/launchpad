@@ -35,7 +35,7 @@ class HomeAssistant(Integration):
     description = "Show and control a device, sensor, scene or script."
     icon = "si:homeassistant"
     requires = ("HASS_URL", "HASS_TOKEN")
-    refresh = 15
+    refresh = 10
     fields = [Field(key="entity_id", label="Entity", type="picker", required=True,
                     help="Search by name or entity ID.")]
 
@@ -151,6 +151,7 @@ class HomeAssistantList(HomeAssistant):
     switches (or a Run button for scenes and scripts). For full controls, use one Home Assistant tile."""
 
     id = "homeassistant_list"
+    shares_source_with = "homeassistant"
     name = "Home Assistant group"
     description = "Several devices and sensors in one tile, as tappable buttons or a list."
     default_size = "2x2"

@@ -40,9 +40,12 @@
     // Re-fetch when this tile's config changes or a new layout is saved.
     JSON.stringify(tile.config);
     board.revision;
+    board.changes[schema?.source ?? tile.integration]; // its data changed (a tile button, Hermes, sign-in)
     refresh();
     const timer = setInterval(() => document.hidden || refresh(), (schema?.refresh ?? 60) * 1000);
-    return () => clearInterval(timer);
+    const back = () => document.hidden || refresh(); // coming back to the tab
+    document.addEventListener('visibilitychange', back);
+    return () => (clearInterval(timer), document.removeEventListener('visibilitychange', back));
   });
 
   async function run(action, params = {}) {
@@ -64,11 +67,9 @@
 
   const status = $derived(!schema || failed ? 'error' : (data?.status ?? 'idle'));
   const dims = $derived(sizeOf(tile.size));
-  // Room for list rows: none on a single small cell, about three per extra row of height.
-  const itemRoom = $derived(dims[1] === 1 ? (dims[0] > 1 ? 2 : 0) : 3 * dims[1] - 1 + (dims[0] > 1 ? 2 : 0));
   const grid = $derived(data?.layout === 'grid');
-  // Cards scale with the tile, so a grid shows them all (anything past the bottom is clipped).
-  const items = $derived(grid ? (data?.items ?? []) : (data?.items ?? []).slice(0, itemRoom));
+  // Lists show every row and scroll; a single small cell only has room for the readout.
+  const items = $derived(dims[0] * dims[1] === 1 && !grid ? [] : (data?.items ?? []));
   const controls = $derived((data?.controls ?? []).slice(0, dims[0] * dims[1] === 1 ? 2 : 6 * dims[0]));
 
   // Resize by dragging the corner grip (one undo point per drag) or with the arrow keys.
@@ -361,11 +362,24 @@
     line-clamp: 4;
   }
 
+  /* Lists and card grids scroll inside the tile; raised above the tile's link so the wheel and
+     touch scrolling reach them. */
+  .items,
+  .cards {
+    position: relative;
+    z-index: 2;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
   .items {
     list-style: none;
     margin: 0.4rem 0 0;
     padding: 0;
     display: grid;
+    align-content: start;
     gap: 0.1rem;
     font-size: var(--step--1);
   }
@@ -451,7 +465,6 @@
     margin: 0.2rem 0 0;
     padding: 0;
     list-style: none;
-    overflow: hidden;
   }
   .card {
     display: grid;

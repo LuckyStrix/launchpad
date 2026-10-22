@@ -58,6 +58,17 @@ class Control(BaseModel):
     params: dict[str, Any] = {}
 
 
+# Change counters per data source (an integration's `source`, usually its id). `changed()` is called
+# after anything that changes that data (a tile action, a Hermes write tool, signing in); it drops
+# the cached tile data, and the frontend polls /api/tiles/changes to refresh those tiles at once.
+changes: dict[str, int] = {}
+
+
+def changed(*sources: str) -> None:
+    for source in sources:
+        changes[source] = changes.get(source, 0) + 1
+
+
 class TileData(BaseModel):
     """Everything a tile shows. The frontend renders this generically, so a new
     integration needs no frontend code."""
@@ -128,6 +139,13 @@ class Integration:
     refresh: int = 60  # seconds between tile refreshes
     default_size: str = "1x1"
     router: APIRouter | None = None
+    # Integrations that read the same data share a source, so a change through one refreshes the
+    # other's tiles too (a Home Assistant tile and a Home Assistant group). Defaults to the id.
+    shares_source_with: str = ""
+
+    @property
+    def source(self) -> str:
+        return self.shares_source_with or self.id
 
     def env(self, name: str, default: str = "") -> str:
         return env(name, default)
@@ -164,6 +182,7 @@ class Integration:
             "fields": [f.model_dump() for f in self.fields],
             "refresh": self.refresh,
             "default_size": self.default_size,
+            "source": self.source,
             "configured": self.configured,
             "missing": self.missing,
             "tools": [fn.__name__ for fn in self.tools()],

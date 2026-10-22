@@ -10,12 +10,13 @@ import httpx
 from fastapi import APIRouter, Body, HTTPException
 
 from . import integrations, layout
+from .integrations import base
 from .integrations.base import Integration, IntegrationError, TileData
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["tiles"])
 
-_cache: dict[str, tuple[float, str, TileData]] = {}
+_cache: dict[str, tuple[float, str, int, TileData]] = {}  # tile id -> (time, config, change count, data)
 
 
 def _integration(integration_id: str) -> Integration:
@@ -67,15 +68,16 @@ async def field_options(integration_id: str, field: str, q: str = ""):
 async def tile_data(tile_id: str) -> TileData:
     tile, integration = _tile(tile_id)
     key = json.dumps(tile.config, sort_keys=True)
+    version = base.changes.get(integration.source, 0)
     cached = _cache.get(tile_id)
     ttl = max(5, integration.refresh // 2)
-    if cached and cached[1] == key and time.monotonic() - cached[0] < ttl:
-        return cached[2]
+    if cached and cached[1:3] == (key, version) and time.monotonic() - cached[0] < ttl:
+        return cached[3]
     data = await _guard(integration, lambda: integration.fetch(tile.config))
     # Only cache healthy results: after fixing a problem (signing in, setting a token, bringing
     # a service back) the tile should recover on the next refresh, not after the cache expires.
     if data.status in ("ok", "idle") and not data.error:
-        _cache[tile_id] = (time.monotonic(), key, data)
+        _cache[tile_id] = (time.monotonic(), key, version, data)
     else:
         _cache.pop(tile_id, None)
     return data
@@ -87,5 +89,12 @@ async def tile_action(tile_id: str, name: str, params: dict[str, Any] = Body(def
     handler = integration.actions().get(name)
     if not handler:
         raise HTTPException(404, f"{integration.name} tiles have no {name!r} action.")
-    _cache.pop(tile_id, None)
-    return await _guard(integration, lambda: handler(tile.config, params))
+    result = await _guard(integration, lambda: handler(tile.config, params))
+    base.changed(integration.source)  # other tiles showing the same data refresh too
+    return result
+
+
+@router.get("/tiles/changes")
+async def tile_changes() -> dict[str, int]:
+    """Change counters per integration; when one goes up, tiles of that integration refetch."""
+    return base.changes

@@ -18,7 +18,7 @@ from fastapi.responses import RedirectResponse
 
 from .. import db
 from ..config import env, settings
-from .base import Field, Integration, IntegrationError, Item, Option, TileData, action, http, tool
+from .base import Field, Integration, IntegrationError, Item, Option, TileData, action, changed, http, tool
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -143,6 +143,7 @@ async def callback(code: str = "", state: str = "", error: str = ""):
                                "Google account settings, then connect again")
     db.kv_set(TOKEN_KEY, grant["refresh_token"])
     _access.update(token=grant["access_token"], expires=time.time() + grant.get("expires_in", 3600))
+    changed("google_calendar", "google_tasks")
     return RedirectResponse("/?google=connected")
 
 
@@ -159,6 +160,7 @@ async def status():
 async def disconnect():
     db.kv_delete(TOKEN_KEY)
     _access.update(token=None, expires=0.0)
+    changed("google_calendar", "google_tasks")
     return {"connected": False}
 
 
@@ -190,7 +192,7 @@ class GoogleCalendar(Integration):
     description = "Upcoming events from one or more of your calendars."
     icon = "si:googlecalendar"
     requires = REQUIRES
-    refresh = 300
+    refresh = 60
     default_size = "2x2"
     router = router
     fields = [
@@ -273,7 +275,7 @@ class GoogleTasks(Integration):
     description = "Open tasks from one of your lists, with a button to complete each."
     icon = "si:googletasks"
     requires = REQUIRES
-    refresh = 120
+    refresh = 30
     default_size = "1x2"
     fields = [Field(key="tasklist", label="List", type="picker", default="@default")]
 

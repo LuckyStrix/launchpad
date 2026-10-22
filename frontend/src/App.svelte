@@ -50,9 +50,15 @@
     };
   });
 
+  // Every few seconds: approvals waiting for the user, and which services changed (tiles refetch).
   async function pollApprovals() {
     if (document.hidden) return;
-    approvals = await api.approvals().catch(() => approvals);
+    const [waiting, changes] = await Promise.all([
+      api.approvals().catch(() => approvals),
+      api.tileChanges().catch(() => null),
+    ]);
+    approvals = waiting;
+    if (changes && JSON.stringify(changes) !== JSON.stringify(board.changes)) board.changes = changes;
   }
 
   async function decide(id, approve) {

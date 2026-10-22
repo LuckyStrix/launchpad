@@ -13,6 +13,7 @@ export const board = $state({
   saving: false,
   error: null,
   undoCount: 0,
+  changes: {}, // integration id -> change counter; tiles refetch when theirs goes up
 });
 
 // Where each tile goes when opened (tile id -> URL), so search can open non-link tiles too.

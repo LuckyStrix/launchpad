@@ -41,7 +41,8 @@ That's all it takes. **Add tile** now lists Weather, with a City field.
 | `status` | `ok`, `warn`, `error` or `idle`. This sets the colour of the tile's indicator lamp. |
 | `value` | The big readout. |
 | `detail` | One secondary line. |
-| `items` | List rows: `Item(label, detail, url, status)`. Wide and tall tiles show more of them. An `Item` with `action=` gets a button that calls that action with the item's `params`. |
+| `items` | List rows: `Item(label, detail, url, status)`. The list scrolls inside the tile. An `Item` with `action=` gets a control that calls that action with the item's `params`: a round check (`kind="check"`), an on/off switch showing `on` (`kind="switch"`), or a button labelled `action_label` (`kind="button"`). |
+| `layout` | `"list"` (default) or `"grid"`, which shows items as tappable cards with their `icon`, like a phone widget. |
 | `controls` | `Control(action, label, kind="button" \| "toggle" \| "slider", value, min, max, params)`. |
 | `url` | Where clicking the tile goes. `#assistant` opens the chat. |
 | `error` | A message to show instead of data. |
@@ -88,6 +89,10 @@ Decorate a typed async method with `@tool()`. Launchpad serves it over MCP as `<
 `write=True` tools wait for the user to click **Approve** on the page before they run. A denial, or no answer before `APPROVAL_TIMEOUT`, is reported back to Hermes as declined. Use `write=True` for anything that changes state.
 
 Tools are only offered when the integration is configured.
+
+## Keeping tiles fresh
+
+Tiles refetch every `refresh` seconds, when the user comes back to the tab, and within a few seconds of a change: after one of your actions or write tools runs, every tile of your integration refetches. If two integrations show the same data, set `shares_source_with = "<other id>"` on one so a change through either refreshes both. Call `changed("<source>")` from `app.integrations.base` after anything else that changes your data, such as an OAuth sign-in.
 
 ## Secrets and routes
 

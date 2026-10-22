@@ -41,6 +41,7 @@ export const api = {
   integrations: () => request('GET', '/api/integrations'),
   options: (id, field, q) => request('GET', `/api/integrations/${enc(id)}/options/${enc(field)}?q=${enc(q)}`),
   tileData: (id) => request('GET', `/api/tiles/${enc(id)}/data`),
+  tileChanges: () => request('GET', '/api/tiles/changes'),
   action: (id, name, params) => request('POST', `/api/tiles/${enc(id)}/actions/${enc(name)}`, params),
 
   approvals: () => request('GET', '/api/approvals'),
