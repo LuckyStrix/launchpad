@@ -288,10 +288,11 @@
     overflow: hidden;
     transition: transform 120ms ease, box-shadow 120ms ease;
   }
+  /* Lift on hover, switched off for now. To bring it back, uncomment:
   .tile:has(.cover:hover) {
     transform: translateY(-1px);
     box-shadow: var(--shadow), 0 6px 14px #1d242214;
-  }
+  } */
   .tile.busy {
     opacity: 0.75;
   }
