@@ -67,11 +67,12 @@ class TileData(BaseModel):
 
 
 class Field(BaseModel):
-    """One input in the tile editor. `picker` fields search `Integration.options()`."""
+    """One input in the tile editor. `picker` and `multipicker` fields search `Integration.options()`;
+    a multipicker's value is a list."""
 
     key: str
     label: str
-    type: Literal["text", "url", "number", "bool", "select", "picker", "textarea"] = "text"
+    type: Literal["text", "url", "number", "bool", "select", "picker", "multipicker", "textarea"] = "text"
     required: bool = False
     default: Any = None
     options: list[dict[str, str]] = []  # for type="select": [{"value", "label"}]

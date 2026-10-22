@@ -3,6 +3,7 @@
 Connect at /api/google/connect. The refresh token is stored in SQLite (data/, never in git).
 """
 
+import asyncio
 import re
 import secrets
 import time
@@ -175,38 +176,56 @@ def _when(event: dict, today: date) -> str:
     return clock if moment.date() == today else f"{moment:%a} {clock}"
 
 
+def _start(event: dict) -> datetime:
+    """When an event starts, comparable across all-day and timed events."""
+    start = event["start"]
+    if "dateTime" in start:
+        return datetime.fromisoformat(start["dateTime"])
+    return datetime.combine(date.fromisoformat(start["date"]), datetime.min.time(), _tz())
+
+
 class GoogleCalendar(Integration):
     id = "google_calendar"
     name = "Google Calendar"
-    description = "Upcoming events from one of your calendars."
+    description = "Upcoming events from one or more of your calendars."
     icon = "si:googlecalendar"
     requires = REQUIRES
     refresh = 300
     default_size = "2x2"
     router = router
     fields = [
-        Field(key="calendar", label="Calendar", type="picker", default="primary"),
+        Field(key="calendar", label="Calendars", type="multipicker", default=["primary"]),
         Field(key="days", label="Show", type="select", default="1",
               options=[{"value": "1", "label": "Today"}, {"value": "3", "label": "Next 3 days"},
                        {"value": "7", "label": "Next 7 days"}]),
     ]
 
     async def _events(self, calendar: str, days: int) -> list[dict]:
+        return (await self._calendar(calendar, days))["items"]
+
+    async def _calendar(self, calendar: str, days: int) -> dict:
+        """One calendar's name ("summary") and upcoming events ("items")."""
         now = datetime.now(_tz())
         end = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=max(days, 1))
         data = await gapi("GET", f"{CALENDAR_API}/calendars/{_seg(calendar)}/events", params={
             "timeMin": now.isoformat(), "timeMax": end.isoformat(), "singleEvents": "true",
             "orderBy": "startTime", "maxResults": 25})
-        return data.get("items", [])
+        return {"summary": data.get("summary", calendar), "items": data.get("items", [])}
 
     async def fetch(self, config):
+        chosen = config.get("calendar") or ["primary"]
+        chosen = [chosen] if isinstance(chosen, str) else chosen  # tiles saved before multi-select
+        days = int(config.get("days") or 1)
         try:
-            events = await self._events(config.get("calendar") or "primary", int(config.get("days") or 1))
+            calendars = await asyncio.gather(*(self._calendar(c, days) for c in chosen))
         except NotConnected as e:
             return _not_connected(e)
+        # Merge every calendar's events by start time; name the calendar when there are several.
+        events = sorted(((e, c["summary"]) for c in calendars for e in c["items"]), key=lambda pair: _start(pair[0]))
         today = datetime.now(_tz()).date()
-        items = [Item(label=e.get("summary", "(No title)"), detail=_when(e, today), url=e.get("htmlLink"))
-                 for e in events]
+        items = [Item(label=e.get("summary", "(No title)"),
+                      detail=_when(e, today) + (f", {name}" if len(chosen) > 1 else ""), url=e.get("htmlLink"))
+                 for e, name in events[:25]]
         if not events:
             return TileData(status="idle", value="Clear", detail="Nothing scheduled",
                             url="https://calendar.google.com/")
@@ -217,7 +236,8 @@ class GoogleCalendar(Integration):
 
     async def options(self, field, query):
         data = await gapi("GET", f"{CALENDAR_API}/users/me/calendarList")
-        return [Option(value=c["id"], label=c.get("summaryOverride") or c["summary"])
+        # The main calendar is offered as "primary", the id saved tiles use by default.
+        return [Option(value="primary" if c.get("primary") else c["id"], label=c.get("summaryOverride") or c["summary"])
                 for c in data.get("items", []) if query.lower() in c["summary"].lower()]
 
     @tool()

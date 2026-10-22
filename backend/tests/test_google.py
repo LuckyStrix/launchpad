@@ -62,3 +62,24 @@ def test_failed_sign_in_redirects_with_reason(client, mock_http, monkeypatch):
 
     assert response.status_code == 307
     assert response.headers["location"].startswith("/?google=error&reason=Google+refused")
+
+
+def test_calendar_merges_several_calendars_by_start_time(client, mock_http, monkeypatch):
+    _connected(monkeypatch)
+
+    def reply(request):
+        if "work" in request.url.path:
+            return httpx.Response(200, json={"summary": "Work", "items": [
+                {"summary": "Standup", "start": {"dateTime": "2026-10-22T09:00:00-04:00"}}]})
+        return httpx.Response(200, json={"summary": "Me", "items": [
+            {"summary": "Dentist", "start": {"dateTime": "2026-10-22T08:00:00-04:00"}},
+            {"summary": "Trip", "start": {"date": "2026-10-23"}}]})
+
+    mock_http(reply)
+    calendar = registry["google_calendar"]
+    data = asyncio.run(calendar.fetch({"calendar": ["primary", "work@example.com"], "days": "3"}))
+    assert [i.label for i in data.items] == ["Dentist", "Standup", "Trip"]
+    assert data.items[1].detail.endswith(", Work")
+
+    single = asyncio.run(calendar.fetch({"calendar": "primary"}))  # tiles saved before multi-select
+    assert [i.label for i in single.items] == ["Dentist", "Trip"] and "," not in single.items[0].detail
