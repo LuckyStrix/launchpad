@@ -184,6 +184,7 @@
       <p class="message">{note}</p>
     {:else if data}
       {#if data.value && tile.show_value !== false}<p class="value">{data.value}</p>{/if}
+      {#if data.image}<img class="picture" src={data.image} alt={data.image_alt} />{/if}
       {#if data.detail}<p class="detail">{data.detail}</p>{/if}
       {#if grid && items.length}
         <ul class="cards">
@@ -402,6 +403,16 @@
     line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+  /* A picture takes whatever height the readout and detail leave, cropped to fill it. */
+  .picture {
+    flex: 1 1 0;
+    min-height: 0;
+    width: 100%;
+    margin: 0.2rem 0 0.25rem;
+    object-fit: cover;
+    border-radius: 3px;
+    background: var(--holder);
   }
   .message {
     -webkit-line-clamp: 4;

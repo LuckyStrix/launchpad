@@ -1,7 +1,7 @@
 def test_seeds_from_config_yaml(client):
     body = client.get("/api/layout").json()
     assert body["revision"] == 1
-    assert [t["id"] for t in body["layout"]["groups"][0]["tiles"]] == ["site", "lamp", "repo"]
+    assert [t["id"] for t in body["layout"]["groups"][0]["tiles"]] == ["site", "lamp", "repo", "apod"]
 
 
 def test_save_and_conflict(client):

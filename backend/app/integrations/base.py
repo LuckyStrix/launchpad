@@ -76,6 +76,8 @@ class TileData(BaseModel):
     status: Status = "idle"
     value: str | None = None  # the big readout
     detail: str | None = None  # one secondary line
+    image: str | None = None  # a picture filling the tile body, under the readout
+    image_alt: str = ""
     items: list[Item] = []
     layout: Literal["list", "grid"] = "list"  # grid: items as tappable cards, like a phone widget
     controls: list[Control] = []

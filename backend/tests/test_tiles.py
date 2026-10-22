@@ -1,10 +1,12 @@
 import asyncio
 import json
+from datetime import datetime
 
 import httpx
 import pytest
 
 from app import tiles
+from app.integrations import apod
 
 
 def test_link_up_and_down(client, mock_http):
@@ -240,3 +242,69 @@ def test_github_says_100_plus_when_the_pr_count_request_fails(client, mock_http)
 
     mock_http(reply)
     assert client.get("/api/tiles/repo/data").json()["detail"] == "100+ open PRs"
+
+
+
+def _apod_reply(date="2026-10-22", **extra):
+    return lambda request: httpx.Response(200, json={
+        "date": date, "title": "Orion", "media_type": "image", "url": "https://apod.test/orion.jpg", **extra})
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """Sets the time the APOD tile sees (US Eastern) and forgets its saved picture."""
+    monkeypatch.setattr(apod.integration, "_picture", None)
+    now = {"at": datetime(2026, 10, 22, 9, tzinfo=apod.EASTERN)}
+    monkeypatch.setattr(apod, "_now", lambda: now["at"])
+
+    def set_time(*args):
+        now["at"] = datetime(*args, tzinfo=apod.EASTERN)
+        tiles._cache.clear()
+
+    return set_time
+
+
+def test_apod_shows_the_picture_and_links_its_page(client, mock_http, clock):
+    seen = mock_http(_apod_reply(copyright="\nA. Person\n"))
+    data = client.get("/api/tiles/apod/data").json()
+    assert seen[0].url.params["api_key"] == "DEMO_KEY"
+    assert data["image"] == "https://apod.test/orion.jpg"
+    assert data["detail"] == "Orion · © A. Person"
+    assert data["url"] == "https://apod.nasa.gov/apod/ap261022.html"
+
+
+def test_apod_asks_nasa_once_a_day_after_1am_eastern(client, mock_http, clock):
+    seen = mock_http(_apod_reply())
+    client.get("/api/tiles/apod/data")
+    clock(2026, 10, 23, 0, 59)
+    client.get("/api/tiles/apod/data")
+    assert len(seen) == 1
+
+    mock_http(_apod_reply("2026-10-23"))
+    clock(2026, 10, 23, 1, 0)
+    assert client.get("/api/tiles/apod/data").json()["url"].endswith("ap261023.html")
+
+
+def test_apod_tries_again_within_the_hour_when_the_new_picture_is_late(client, mock_http, clock):
+    clock(2026, 10, 23, 1, 0)
+    seen = mock_http(_apod_reply("2026-10-22"))
+    client.get("/api/tiles/apod/data")
+    clock(2026, 10, 23, 1, 30)
+    client.get("/api/tiles/apod/data")
+    assert len(seen) == 1
+    clock(2026, 10, 23, 2, 0)
+    client.get("/api/tiles/apod/data")
+    assert len(seen) == 2
+
+
+def test_apod_video_day_uses_the_thumbnail(client, mock_http, clock):
+    mock_http(_apod_reply(media_type="video", url="https://www.youtube.com/embed/x",
+                          thumbnail_url="https://img.youtube.com/vi/x/0.jpg"))
+    data = client.get("/api/tiles/apod/data").json()
+    assert data["image"] == "https://img.youtube.com/vi/x/0.jpg"
+    assert data["error"] is None
+
+
+def test_apod_rate_limit_explains_the_key(client, mock_http, clock):
+    mock_http(lambda request: httpx.Response(429))
+    assert "NASA_API_KEY" in client.get("/api/tiles/apod/data").json()["error"]

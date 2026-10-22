@@ -41,6 +41,7 @@ That's all it takes. **Add tile** now lists Weather, with a City field.
 | `status` | `ok`, `warn`, `error` or `idle`. This sets the colour of the tile's indicator lamp. |
 | `value` | The big readout. |
 | `detail` | One secondary line. |
+| `image` | A picture URL that fills the rest of the tile, cropped to fit. Set `image_alt` to describe it. |
 | `items` | List rows: `Item(label, detail, url, status)`. The list scrolls inside the tile. An `Item` with `action=` gets a control that calls that action with the item's `params`: a round check (`kind="check"`), an on/off switch showing `on` (`kind="switch"`), or a button labelled `action_label` (`kind="button"`). |
 | `layout` | `"list"` (default) or `"grid"`, which shows items as tappable cards with their `icon`, like a phone widget. |
 | `controls` | `Control(action, label, kind="button" \| "toggle" \| "slider", value, min, max, params)`. |

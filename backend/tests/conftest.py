@@ -16,6 +16,7 @@ groups:
       - {id: site, integration: link, title: Site, config: {url: "https://site.test"}}
       - {id: lamp, integration: homeassistant, title: Lamp, config: {entity_id: light.lamp}}
       - {id: repo, integration: github, title: Repo, config: {repo: me/proj, workflow: ci.yml}}
+      - {id: apod, integration: apod, title: APOD}
 """
 
 

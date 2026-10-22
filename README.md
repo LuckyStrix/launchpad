@@ -4,7 +4,7 @@ A tile-based homepage for your projects, sites and devices, with Hermes as a bui
 
 ![The board](docs/images/board.png)
 
-- **Tiles for everything:** links to self-hosted apps (with an up/down check), Home Assistant devices you can switch and dim (one per tile, or a list of several with on/off switches), GitHub repos with CI status and a workflow button, Google Calendar, Google Tasks.
+- **Tiles for everything:** links to self-hosted apps (with an up/down check), Home Assistant devices you can switch and dim (one per tile, or a list of several with on/off switches), GitHub repos with CI status and a workflow button, Google Calendar, Google Tasks, NASA's picture of the day.
 - **Edit in the page:** drag tiles between groups, resize them, add and configure them from forms. Undo, YAML export and import, and saved revision history.
 - **Hermes as the assistant:** chat in a side drawer. Hermes gets Launchpad's GitHub and Google tools over MCP, and controls Home Assistant through its own toolset. Anything that changes something waits for you to approve it on the page.
 - **Easy to extend:** an integration is one Python class. Drop it in `config/plugins/` to keep it out of the repo.
@@ -30,6 +30,7 @@ Each integration shows what it still needs on its tile, such as "Set GITHUB_TOKE
 | Home Assistant | `HASS_URL`, `HASS_TOKEN` |
 | GitHub | `GITHUB_TOKEN` |
 | Google Calendar and Tasks | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PUBLIC_URL`. Then click the tile to connect your account |
+| NASA picture of the day | Nothing. Optionally `NASA_API_KEY` for a higher rate limit |
 | Hermes chat | `HERMES_URL`, `HERMES_API_KEY`. See [docs/hermes.md](docs/hermes.md) |
 | Hermes using Launchpad's tools | `LAUNCHPAD_MCP_TOKEN`. See [docs/hermes.md](docs/hermes.md) |
 
