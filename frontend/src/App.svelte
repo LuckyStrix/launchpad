@@ -53,28 +53,43 @@
   // Every few seconds: approvals waiting for the user, and which services changed (tiles refetch).
   // Skips a round while the last one is still waiting, so requests can't pile up on a bad connection.
   let polling = false;
+  let decisions = 0; // bumped by each approve/deny, so an older poll can't bring a card back
   async function pollApprovals() {
     if (document.hidden || polling) return;
     polling = true;
+    const decided = decisions;
     try {
       const [waiting, changes] = await Promise.all([
-        api.approvals().catch(() => approvals),
+        api.approvals().catch(() => null),
         api.tileChanges().catch(() => null),
       ]);
-      approvals = waiting;
-      // Key by key, so only tiles whose source changed refetch (replacing the object would wake every tile).
-      for (const [source, count] of Object.entries(changes ?? {})) {
-        if (board.changes[source] !== count) board.changes[source] = count;
-      }
+      if (waiting && decided === decisions) approvals = waiting;
+      if (changes) applyChanges(changes);
     } finally {
       polling = false;
     }
   }
 
+  // Tiles watch board.changes[source]. Values are "<server start>:<count>": set key by key, so only
+  // tiles whose source changed refetch, and a server restart (counts back to 0) still registers.
+  function applyChanges({ epoch, counts }) {
+    const sources = new Set([...Object.keys(board.changes), ...Object.keys(counts)]);
+    for (const source of sources) {
+      const value = `${epoch}:${counts[source] ?? 0}`;
+      if (board.changes[source] !== value) board.changes[source] = value;
+    }
+  }
+
   async function decide(id, approve) {
+    decisions++;
     approvals = approvals.filter((a) => a.id !== id);
-    // On failure, re-check: the card comes back only if the request is really still waiting.
-    await api.decide(id, approve).catch((e) => ((notice = e.message), pollApprovals()));
+    try {
+      await api.decide(id, approve);
+    } catch (e) {
+      notice = e.message;
+      // Re-check now: the card comes back only if the request is really still waiting.
+      approvals = await api.approvals().catch(() => approvals);
+    }
   }
 
   $effect(() => {

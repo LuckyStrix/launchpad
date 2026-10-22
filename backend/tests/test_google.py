@@ -109,3 +109,17 @@ def test_refresh_finishing_after_disconnect_is_dropped(client, mock_http, monkey
     with pytest.raises(google.NotConnected):
         asyncio.run(google._access_token())
     assert google._access["token"] is None
+
+
+def test_rejected_old_token_doesnt_sign_out_a_fresh_reconnect(client, mock_http, monkeypatch):
+    monkeypatch.setattr(google, "_access", {"token": None, "expires": 0.0})
+    db.kv_set(google.TOKEN_KEY, "old")
+
+    def reply(request):
+        db.kv_set(google.TOKEN_KEY, "new")  # the user reconnects while the old token is being refused
+        google._access.update(token="fresh", expires=1e12)
+        return httpx.Response(400, json={"error": "invalid_grant"})
+
+    mock_http(reply)
+    assert asyncio.run(google._access_token()) == "fresh"
+    assert db.kv_get(google.TOKEN_KEY) == "new"

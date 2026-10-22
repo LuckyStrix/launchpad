@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import time
+import uuid
 from typing import Any
 
 import httpx
@@ -42,10 +43,14 @@ async def _guard(integration: Integration, call, deadline: float | None = None) 
     don't, since cutting a change off halfway would leave it unclear whether it happened."""
     if not integration.configured:
         return TileData(status="warn", error=f"Set {', '.join(integration.missing)} in .env to use this tile.")
+    scope = None
     try:
-        return await asyncio.wait_for(call(), deadline) or TileData()
+        async with asyncio.timeout(deadline) as scope:
+            return await call() or TileData()
     except TimeoutError:
-        return TileData(status="error", error=f"{integration.name} took more than {deadline} seconds to answer.")
+        if scope and scope.expired():
+            return TileData(status="error", error=f"{integration.name} took more than {deadline} seconds to answer.")
+        return TileData(status="error", error=f"{integration.name} timed out.")
     except IntegrationError as e:
         return TileData(status="error", error=str(e))
     except httpx.HTTPError as e:
@@ -97,12 +102,17 @@ async def tile_action(tile_id: str, name: str, params: dict[str, Any] = Body(def
     if not handler:
         raise HTTPException(404, f"{integration.name} tiles have no {name!r} action.")
     result = await _guard(integration, lambda: handler(tile.config, params))
-    if not result.error:
-        base.changed(integration.source)  # other tiles showing the same data refresh too
+    if integration.configured:
+        # Even an action that ends in an error may have changed something first (a workflow started,
+        # then the follow-up read failed), so tiles showing the same data refetch either way.
+        base.changed(integration.source)
     return result
 
 
+EPOCH = uuid.uuid4().hex  # new on every start; counters restart from zero, so the page starts over too
+
+
 @router.get("/tiles/changes")
-async def tile_changes() -> dict[str, int]:
-    """Change counters per integration; when one goes up, tiles of that integration refetch."""
-    return base.changes
+async def tile_changes() -> dict[str, Any]:
+    """Change counters per data source; when one goes up, tiles of that source refetch."""
+    return {"epoch": EPOCH, "counts": base.changes}

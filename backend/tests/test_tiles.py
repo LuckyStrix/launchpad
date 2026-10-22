@@ -150,9 +150,11 @@ def test_changes_skip_the_cache_and_are_reported(client, mock_http):
     client.get("/api/tiles/lamp/data")
     assert len(seen) == 1  # second read came from the cache
 
-    before = client.get("/api/tiles/changes").json().get("homeassistant", 0)
+    counts = lambda: client.get("/api/tiles/changes").json()["counts"]  # noqa: E731
+    before = counts().get("homeassistant", 0)
     client.post("/api/tiles/lamp/actions/call", json={"value": True})
-    assert client.get("/api/tiles/changes").json()["homeassistant"] == before + 1
+    assert counts()["homeassistant"] == before + 1
+    assert client.get("/api/tiles/changes").json()["epoch"] == tiles.EPOCH  # tells the page about restarts
 
     client.get("/api/tiles/lamp/data")
     assert [r.method for r in seen] == ["GET", "POST", "GET"]  # the change dropped the cached data
@@ -190,11 +192,22 @@ def test_homeassistant_buttons_cant_add_targets_or_services(client, mock_http):
     assert json.loads(seen[0].content) == {"brightness_pct": 40, "entity_id": "light.lamp"}
 
 
-def test_failed_action_is_not_announced_as_a_change(client, mock_http):
-    mock_http(lambda request: httpx.Response(200, json=[]))
-    before = client.get("/api/tiles/changes").json().get("homeassistant", 0)
-    client.post("/api/tiles/lamp/actions/call", json={"service": "reload"})
-    assert client.get("/api/tiles/changes").json().get("homeassistant", 0) == before
+def test_an_action_that_errors_still_refreshes_related_tiles(client, mock_http):
+    # It may have changed something before failing (a workflow started, then the follow-up read broke).
+    mock_http(lambda request: httpx.Response(500))
+    before = client.get("/api/tiles/changes").json()["counts"].get("homeassistant", 0)
+    client.post("/api/tiles/lamp/actions/call", json={"value": True})
+    assert client.get("/api/tiles/changes").json()["counts"]["homeassistant"] == before + 1
+
+
+def test_timeouts_inside_an_integration_are_not_blamed_on_the_deadline(client, monkeypatch):
+    from app.integrations import registry
+
+    async def inner_timeout(config):
+        raise TimeoutError
+
+    monkeypatch.setattr(registry["link"], "fetch", inner_timeout)
+    assert client.get("/api/tiles/site/data").json()["error"] == "Link timed out."
 
 
 def test_github_counts_more_than_100_open_prs(client, mock_http):
@@ -212,3 +225,18 @@ def test_github_counts_more_than_100_open_prs(client, mock_http):
 
     mock_http(reply)
     assert client.get("/api/tiles/repo/data").json()["detail"] == "250 open PRs, 10 issues"
+
+
+def test_github_says_100_plus_when_the_pr_count_request_fails(client, mock_http):
+    def reply(request):
+        path = request.url.path
+        if path.endswith("/pulls") and request.url.params.get("per_page") == "1":
+            return httpx.Response(500)
+        if path.endswith("/pulls"):
+            return httpx.Response(200, json=[{"number": n} for n in range(100)])
+        if path.endswith("/runs"):
+            return httpx.Response(200, json={"workflow_runs": []})
+        return httpx.Response(200, json={"open_issues_count": 260, "html_url": "https://github.com/me/proj"})
+
+    mock_http(reply)
+    assert client.get("/api/tiles/repo/data").json()["detail"] == "100+ open PRs"

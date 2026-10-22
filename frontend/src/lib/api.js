@@ -8,10 +8,11 @@ export class ApiError extends Error {
 }
 
 // After sleep or a network change the browser can keep using a dead connection, and requests
-// on it hang instead of failing. Reads give up after this long so callers can retry; it's above
-// the server's own 20 s limit for loading a tile. Writes never time out here: giving up on one
-// the server still finishes would invite a repeat (a second workflow run, a second approval).
+// on it hang instead of failing. Reads give up after 25 s (above the server's own 20 s limit for
+// loading a tile) so callers can retry. Writes wait much longer, and their message says the change
+// may have gone through, so nobody repeats it blindly (a second workflow run, a second approval).
 const READ_TIMEOUT_MS = 25_000;
+const WRITE_TIMEOUT_MS = 60_000;
 
 function timeoutSignal(ms) {
   if (AbortSignal.timeout) return AbortSignal.timeout(ms);
@@ -20,14 +21,15 @@ function timeoutSignal(ms) {
   return controller.signal;
 }
 
-function networkError(e) {
-  const timedOut = e?.name === 'TimeoutError' || e?.name === 'AbortError';
-  return new ApiError(0, timedOut ? "Launchpad's server didn't answer in time." : "Can't reach Launchpad's server.");
+function networkError(e, method) {
+  if (e?.name !== 'TimeoutError' && e?.name !== 'AbortError') return new ApiError(0, "Can't reach Launchpad's server.");
+  if (method === 'GET') return new ApiError(0, "Launchpad's server didn't answer in time.");
+  return new ApiError(0, "No answer from Launchpad's server, so it's unclear whether that went through. Check before trying again.");
 }
 
 async function request(method, path, body, contentType = 'application/json') {
   const init = { method, headers: {} };
-  if (method === 'GET') init.signal = timeoutSignal(READ_TIMEOUT_MS);
+  init.signal = timeoutSignal(method === 'GET' ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS);
   if (body !== undefined) {
     init.headers['content-type'] = contentType;
     init.body = contentType === 'application/json' ? JSON.stringify(body) : body;
@@ -36,7 +38,7 @@ async function request(method, path, body, contentType = 'application/json') {
   try {
     res = await fetch(path, init);
   } catch (e) {
-    throw networkError(e);
+    throw networkError(e, method);
   }
   if (!res.ok) {
     let message = res.statusText;
@@ -50,7 +52,7 @@ async function request(method, path, body, contentType = 'application/json') {
     // The body can still be cut off (or time out) after the headers arrive.
     return await ((res.headers.get('content-type') || '').includes('json') ? res.json() : res.text());
   } catch (e) {
-    throw networkError(e);
+    throw networkError(e, method);
   }
 }
 

@@ -101,6 +101,10 @@ async def _access_token() -> str:
             grant = await _token_request({"grant_type": "refresh_token", "refresh_token": refresh})
         except IntegrationError as e:
             if "invalid_grant" in str(e):
+                if db.kv_get(TOKEN_KEY) != refresh:  # reconnected meanwhile: keep the new sign-in
+                    if _access["token"] and _access["expires"] > time.time() + 60:
+                        return _access["token"]
+                    raise NotConnected("Connect your Google account.")
                 db.kv_delete(TOKEN_KEY)
                 raise NotConnected("Google signed Launchpad out. Connect your account again.")
             raise

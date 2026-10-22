@@ -55,20 +55,13 @@
     note = e.status === 404 ? 'Save the layout to load this tile.' : e.message;
   }
 
-  let skipOwnChange = false;
-  let seenChange;
-  let first = true;
   $effect(() => {
     // Re-fetch when this tile's config changes, a new layout is saved, or its data changed
-    // (a tile button, Hermes, sign-in) — except a change this tile's own button just made.
+    // (a tile button, Hermes, sign-in).
     JSON.stringify(tile.config);
     board.revision;
-    const change = board.changes[schema?.source ?? tile.integration];
-    const ownChange = skipOwnChange && !first && change !== seenChange;
-    seenChange = change;
-    first = false;
-    if (ownChange) skipOwnChange = false;
-    else refresh();
+    board.changes[schema?.source ?? tile.integration];
+    refresh();
     const timer = setInterval(() => document.hidden || refresh(), (schema?.refresh ?? 60) * 1000);
     // Back to the tab, or back online: fresh retry budget, and one refresh even though waking a
     // computer usually fires both events.
@@ -95,8 +88,6 @@
       const fresh = await api.action(tile.id, action, params);
       if (mine === latest) data = fresh;
       ok();
-      skipOwnChange = true; // the change this causes would only refetch what we just got
-      setTimeout(() => (skipOwnChange = false), 10_000);
     } catch (e) {
       fail(e);
     } finally {
