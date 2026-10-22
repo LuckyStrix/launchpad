@@ -21,6 +21,18 @@ export const tileLinks = {};
 // True while a drag is in progress, so one drag across groups records one undo point.
 export const drag = { active: false };
 
+// Tile sizes are "WxH" in grid cells, each from 1 to MAX_SPAN.
+export const MAX_SPAN = 6;
+const clampSpan = (n) => Math.min(MAX_SPAN, Math.max(1, Math.round(Number(n)) || 1));
+
+/** "3x2" -> [3, 2] */
+export function sizeOf(size) {
+  const [w, h] = String(size ?? '1x1').split('x');
+  return [clampSpan(w), clampSpan(h)];
+}
+
+export const sizeName = (w, h) => `${clampSpan(w)}x${clampSpan(h)}`;
+
 let savedLayout = null;
 const undoStack = [];
 

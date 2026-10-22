@@ -1,13 +1,14 @@
 <script>
   // Add or edit a tile. The form is built from the integration's field schema.
   import { untrack } from 'svelte';
-  import { board, change, findTile, newId } from './board.svelte.js';
+  import { board, change, findTile, MAX_SPAN, newId, sizeName, sizeOf } from './board.svelte.js';
   import FieldInput from './FieldInput.svelte';
 
   /** target: { groupId } to add a tile, or { tileId } to edit one. */
   let { target, onclose } = $props();
 
-  const SIZES = [
+  // Shortcuts; any width and height from 1 to MAX_SPAN can be typed in below them.
+  const PRESETS = [
     ['1x1', 'Small'],
     ['2x1', 'Wide'],
     ['1x2', 'Tall'],
@@ -110,13 +111,34 @@
       <fieldset class="field">
         <legend>Size</legend>
         <div class="sizes">
-          {#each SIZES as [size, label] (size)}
-            <label class:chosen={draft.size === size}>
-              <input type="radio" name="size" value={size} bind:group={draft.size} />
+          {#each PRESETS as [size, label] (size)}
+            <button type="button" class:chosen={draft.size === size} aria-pressed={draft.size === size}
+                    onclick={() => (draft.size = size)}>
               <span class="shape s{size}" aria-hidden="true"></span>
               {label}
+            </button>
+          {/each}
+        </div>
+        <div class="dims">
+          {#each ['Width', 'Height'] as label, i (label)}
+            <label>
+              {label}
+              <input
+                class="input"
+                type="number"
+                min="1"
+                max={MAX_SPAN}
+                value={sizeOf(draft.size)[i]}
+                onchange={(e) => {
+                  const d = sizeOf(draft.size);
+                  d[i] = e.currentTarget.value;
+                  draft.size = sizeName(...d);
+                  e.currentTarget.value = sizeOf(draft.size)[i];
+                }}
+              />
             </label>
           {/each}
+          <small>grid cells, 1 to {MAX_SPAN}</small>
         </div>
       </fieldset>
 
@@ -206,26 +228,43 @@
     flex-wrap: wrap;
     gap: 0.4rem;
   }
-  .sizes label {
+  .sizes button {
     display: flex;
     align-items: center;
     gap: 0.45rem;
     padding: 0.4rem 0.7rem;
     border: 1px solid var(--line);
     border-radius: 999px;
+    background: none;
+    color: inherit;
+    font: inherit;
     font-size: var(--step--1);
     cursor: pointer;
   }
-  .sizes label.chosen {
+  .sizes button.chosen {
     border-color: var(--tape);
     background: color-mix(in srgb, var(--tape) 18%, transparent);
   }
-  .sizes label:has(:focus-visible) {
-    outline: 3px solid var(--tape);
+  .dims {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.6rem;
+    margin-top: 0.6rem;
   }
-  .sizes input {
-    position: absolute;
-    opacity: 0;
+  .dims label {
+    display: grid;
+    gap: 0.2rem;
+    font-size: var(--step--1);
+    font-weight: 600;
+  }
+  .dims .input {
+    width: 5rem;
+  }
+  .dims small {
+    padding-bottom: 0.55rem;
+    color: var(--muted);
+    font-size: var(--step--1);
   }
   .shape {
     display: inline-block;

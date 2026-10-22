@@ -4,7 +4,7 @@ import json
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import yaml
 from fastapi import APIRouter, Body, HTTPException
@@ -25,7 +25,7 @@ class Tile(BaseModel):
     integration: str
     title: str = ""
     icon: str = ""  # emoji, image URL, "si:<simple-icons slug>", or blank for the default
-    size: Literal["1x1", "2x1", "1x2", "2x2"] = "1x1"
+    size: str = Field("1x1", pattern=r"^[1-6]x[1-6]$")  # width x height in grid cells
     config: dict[str, Any] = {}
 
 

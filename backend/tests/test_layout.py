@@ -39,3 +39,12 @@ def test_import_reports_bad_yaml(client):
                            headers={"content-type": "application/yaml"})
     assert response.status_code == 422
     assert "isn't valid" in response.json()["detail"]
+
+
+def test_tile_sizes_are_free_form_within_limits(client):
+    doc = client.get("/api/layout").json()
+    tile = doc["layout"]["groups"][0]["tiles"][0]
+    for size, ok in (("3x2", True), ("6x6", True), ("7x1", False), ("0x2", False), ("big", False)):
+        tile["size"] = size
+        response = client.put("/api/layout", json={"layout": doc["layout"]})
+        assert (response.status_code == 200) is ok, size

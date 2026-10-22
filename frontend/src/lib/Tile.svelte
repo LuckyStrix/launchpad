@@ -1,12 +1,11 @@
 <script>
   // Renders any integration's TileData generically: readout, detail, item list and controls.
   import { api } from './api.js';
-  import { board, tileLinks } from './board.svelte.js';
+  import { board, MAX_SPAN, sizeName, sizeOf, tileLinks } from './board.svelte.js';
   import Icon from './Icon.svelte';
 
   let { tile, onedit, onremove, onresize, onopenassistant } = $props();
 
-  const ITEM_ROOM = { '1x1': 0, '2x1': 2, '1x2': 5, '2x2': 7 };
   const STATUS_LABEL = { ok: 'Working', warn: 'Needs attention', error: 'Problem', idle: 'Idle' };
 
   const schema = $derived(board.integrations[tile.integration]);
@@ -64,8 +63,56 @@
   });
 
   const status = $derived(!schema || failed ? 'error' : (data?.status ?? 'idle'));
-  const items = $derived((data?.items ?? []).slice(0, ITEM_ROOM[tile.size]));
-  const controls = $derived((data?.controls ?? []).slice(0, tile.size === '1x1' ? 2 : 6));
+  const dims = $derived(sizeOf(tile.size));
+  // Room for list rows: none on a single small cell, about three per extra row of height.
+  const itemRoom = $derived(dims[1] === 1 ? (dims[0] > 1 ? 2 : 0) : 3 * dims[1] - 1 + (dims[0] > 1 ? 2 : 0));
+  const items = $derived((data?.items ?? []).slice(0, itemRoom));
+  const controls = $derived((data?.controls ?? []).slice(0, dims[0] * dims[1] === 1 ? 2 : 6 * dims[0]));
+
+  // Resize by dragging the corner grip (one undo point per drag) or with the arrow keys.
+  let article;
+  function startResize(event) {
+    event.preventDefault();
+    const cell = article.parentElement;
+    const rect = cell.getBoundingClientRect();
+    const gap = parseFloat(getComputedStyle(cell.parentElement).columnGap) || 0;
+    const [w0, h0] = dims;
+    const shown = Number(getComputedStyle(cell).gridColumnEnd.replace('span', '')) || w0;
+    const stepX = (rect.width + gap) / shown;
+    const stepY = (rect.height + gap) / h0;
+    const x0 = event.clientX;
+    const y0 = event.clientY;
+    let recorded = false;
+    const move = (e) => {
+      const next = sizeName(w0 + Math.round((e.clientX - x0) / stepX), h0 + Math.round((e.clientY - y0) / stepY));
+      if (next === tile.size) return;
+      onresize?.(next, !recorded);
+      recorded = true;
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  const KEY_STEP = { ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowDown: [0, 1], ArrowUp: [0, -1] };
+  function keyResize(event) {
+    const step = KEY_STEP[event.key];
+    if (!step) return;
+    event.preventDefault();
+    const next = sizeName(dims[0] + step[0], dims[1] + step[1]);
+    if (next !== tile.size) onresize?.(next, true);
+  }
+
+  // svelte-dnd-action starts a tile drag on mousedown/touchstart; the grip must not.
+  function noDrag(node) {
+    const stop = (e) => e.stopPropagation();
+    node.addEventListener('mousedown', stop);
+    node.addEventListener('touchstart', stop);
+    return { destroy: () => (node.removeEventListener('mousedown', stop), node.removeEventListener('touchstart', stop)) };
+  }
 
   function open(event) {
     if (href === '#assistant') {
@@ -75,7 +122,7 @@
   }
 </script>
 
-<article class="tile size-{tile.size}" class:editing={board.editing} class:busy aria-busy={busy}>
+<article class="tile" class:tall={dims[1] > 1} bind:this={article} class:editing={board.editing} class:busy aria-busy={busy}>
   <header class="holder">
     <Icon icon={tile.icon} fallback={schema?.icon} url={tile.config?.url} label={title} />
     <h3>{title}</h3>
@@ -162,14 +209,25 @@
   {#if board.editing}
     <div class="tools">
       <button class="btn" onclick={onedit}>Settings</button>
-      <button class="btn" onclick={onresize} title="Change size">{tile.size.replace('x', '×')}</button>
       <button class="btn quiet danger" onclick={onremove} aria-label="Remove {title}" title="Remove">✕</button>
+      <button
+        class="btn grip"
+        use:noDrag
+        onpointerdown={startResize}
+        onkeydown={keyResize}
+        aria-label="Resize {title}: {dims[0]} wide, {dims[1]} tall. Drag, or use the arrow keys (up to {MAX_SPAN})."
+        title="Drag to resize"
+      >
+        <span class="size">{dims[0]}×{dims[1]}</span>
+        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M9 3 3 9M9 6 6 9" /></svg>
+      </button>
     </div>
   {/if}
 </article>
 
 <style>
   .tile {
+    container: tile / inline-size;
     position: relative;
     display: flex;
     flex-direction: column;
@@ -236,8 +294,7 @@
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
   }
-  .size-2x2 .value,
-  .size-1x2 .value {
+  .tall .value {
     font-size: var(--step-3);
   }
   .detail,
@@ -379,5 +436,26 @@
   }
   .tools .danger {
     margin-left: auto;
+  }
+  .grip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    cursor: nwse-resize;
+    touch-action: none;
+  }
+  /* On narrow tiles the strip only has room for the grip itself. */
+  @container tile (max-width: 12rem) {
+    .grip .size {
+      display: none;
+    }
+  }
+  .grip svg {
+    width: 0.7rem;
+    height: 0.7rem;
+    stroke: currentColor;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    fill: none;
   }
 </style>

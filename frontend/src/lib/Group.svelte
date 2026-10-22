@@ -1,13 +1,28 @@
 <script>
   import { dndzone, SHADOW_ITEM_MARKER_PROPERTY_NAME } from 'svelte-dnd-action';
   import { flip } from 'svelte/animate';
-  import { board, change, checkpoint, drag } from './board.svelte.js';
+  import { board, change, checkpoint, drag, sizeOf } from './board.svelte.js';
   import Tile from './Tile.svelte';
 
   let { group, index, filter = null, onaddtile, onedittile, onopenassistant } = $props();
 
   const FLIP_MS = 160;
-  const SIZES = ['1x1', '2x1', '1x2', '2x2'];
+
+  // How many columns the grid has right now, so a wide tile never spans more than fit (phones).
+  let grid = $state();
+  let cols = $state(6);
+  $effect(() => {
+    if (!grid) return;
+    const measure = () => (cols = getComputedStyle(grid).gridTemplateColumns.split(' ').length || 1);
+    const observer = new ResizeObserver(measure);
+    observer.observe(grid);
+    return () => observer.disconnect();
+  });
+
+  function span(size) {
+    const [w, h] = sizeOf(size);
+    return `grid-column: span ${Math.min(w, cols)}; grid-row: span ${h}`;
+  }
 
   const visible = $derived(filter ? group.tiles.filter(filter) : group.tiles);
 
@@ -48,11 +63,10 @@
     });
   }
 
-  function resize(tileId) {
-    change((layout) => {
-      const tile = groupAt(layout).tiles.find((t) => t.id === tileId);
-      tile.size = SIZES[(SIZES.indexOf(tile.size) + 1) % SIZES.length];
-    });
+  // `record` is true for the first step of a resize drag, so the whole drag is one undo point.
+  function resize(tileId, size, record) {
+    if (record) checkpoint();
+    groupAt(board.layout).tiles.find((t) => t.id === tileId).size = size;
   }
 </script>
 
@@ -86,12 +100,13 @@
     {#if board.editing}
       <div
         class="grid"
+        bind:this={grid}
         use:dndzone={{ items: group.tiles, flipDurationMs: FLIP_MS, type: 'tile', dropTargetStyle: {} }}
         onconsider={consider}
         onfinalize={finalize}
       >
         {#each group.tiles as tile (tile.id)}
-          <div class="cell size-{tile.size}" animate:flip={{ duration: FLIP_MS }}>
+          <div class="cell" style={span(tile.size)} animate:flip={{ duration: FLIP_MS }}>
             {#if tile[SHADOW_ITEM_MARKER_PROPERTY_NAME]}
               <div class="slot"></div>
             {:else}
@@ -99,7 +114,7 @@
                 {tile}
                 onedit={() => onedittile(tile.id)}
                 onremove={() => removeTile(tile.id)}
-                onresize={() => resize(tile.id)}
+                onresize={(size, record) => resize(tile.id, size, record)}
               />
             {/if}
           </div>
@@ -109,9 +124,9 @@
         <p class="empty">Drag tiles here, or use Add tile.</p>
       {/if}
     {:else}
-      <div class="grid">
+      <div class="grid" bind:this={grid}>
         {#each visible as tile (tile.id)}
-          <div class="cell size-{tile.size}">
+          <div class="cell" style={span(tile.size)}>
             <Tile {tile} {onopenassistant} />
           </div>
         {/each}
@@ -178,14 +193,6 @@
   .cell {
     min-width: 0;
   }
-  .size-2x1,
-  .size-2x2 {
-    grid-column: span 2;
-  }
-  .size-1x2,
-  .size-2x2 {
-    grid-row: span 2;
-  }
   .slot {
     height: 100%;
     border: 2px dashed var(--tape);
@@ -196,12 +203,5 @@
     margin: -0.25rem 0 0;
     color: var(--muted);
     font-size: var(--step--1);
-  }
-
-  @media (max-width: 22rem) {
-    .size-2x1,
-    .size-2x2 {
-      grid-column: span 1;
-    }
   }
 </style>
