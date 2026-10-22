@@ -376,6 +376,7 @@
     padding: 0 0.15rem;
   }
   .value {
+    flex: none;
     margin: 0;
     font-size: var(--step-2);
     font-weight: 700;
@@ -389,6 +390,7 @@
   }
   .detail,
   .message {
+    flex: none; /* keep full height; only the list below shrinks and scrolls */
     margin: 0;
     color: var(--muted);
     font-size: var(--step--1);
