@@ -30,7 +30,6 @@ Each integration shows what it still needs on its tile, such as "Set GITHUB_TOKE
 | Home Assistant | `HASS_URL`, `HASS_TOKEN` |
 | GitHub | `GITHUB_TOKEN` |
 | Google Calendar and Tasks | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PUBLIC_URL`. Then click the tile to connect your account |
-| NASA picture of the day | Nothing. Optionally `NASA_API_KEY` for a higher rate limit |
 | Hermes chat | `HERMES_URL`, `HERMES_API_KEY`. See [docs/hermes.md](docs/hermes.md) |
 | Hermes using Launchpad's tools | `LAUNCHPAD_MCP_TOKEN`. See [docs/hermes.md](docs/hermes.md) |
 
