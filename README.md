@@ -30,6 +30,7 @@ Each integration shows what it still needs on its tile, such as "Set GITHUB_TOKE
 | Home Assistant | `HASS_URL`, `HASS_TOKEN` |
 | GitHub | `GITHUB_TOKEN` |
 | Google Calendar and Tasks | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PUBLIC_URL`. Then click the tile to connect your account |
+| Printer (status tile; Hermes can print) | `PRINTER_URI`. See [docs/printer.md](docs/printer.md) |
 | Hermes chat | `HERMES_URL`, `HERMES_API_KEY`. See [docs/hermes.md](docs/hermes.md) |
 | Hermes using Launchpad's tools | `LAUNCHPAD_MCP_TOKEN`. See [docs/hermes.md](docs/hermes.md) |
 
@@ -56,6 +57,7 @@ backend/app/
   tiles.py             tile data, actions and editor pickers
   assistant.py         streaming chat proxy to Hermes
   mcp_server.py        integration tools served over MCP at /mcp
+  printing.py          IPP client, PWG raster encoder and page rendering for the printer
   approvals.py         approve or deny write actions from the UI
 frontend/src/
   App.svelte           header, search, edit bar
@@ -66,6 +68,7 @@ frontend/src/
 
 - [Adding an integration](docs/adding-an-integration.md)
 - [Connecting Hermes](docs/hermes.md)
+- [Printer](docs/printer.md)
 - [Security notes](docs/security.md)
 
 ## License
